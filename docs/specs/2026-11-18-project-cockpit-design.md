@@ -112,6 +112,7 @@ Host 插件（bundle row）
       "bugs": { "blocking": 2, "open": 3, "fixed": 1, "lastRound": 13, "lastVerdict": "fix", "lastAt": "2026-11-17T09:12:00+08:00" }
     }
   ],
+  "totals": { "blocking": 2, "open": 3, "fixed": 1, "rounds": 17, "lastRound": 13, "lastVerdict": "fix" },
   "gates": [
     { "name": "想清楚", "state": "done", "basis": "prd.md 存在" },
     { "name": "定规格", "state": "done", "basis": ".trellis/spec 有 10 个文件" },
@@ -144,6 +145,12 @@ Host 插件（bundle row）
 | `.trellis/.version` / `config.yaml` | `version=null` | 不崩 |
 
 **两条账本路径都支持**，与 claude-code-review 的 `storage=auto` 判定一致：有 `.trellis` 优先 Trellis，否则本地账本。
+
+**多任务各算各的账本**：Trellis 模式下每个任务有独立账本（`.trellis/tasks/<task>/review/`），`readEvidence` 逐任务读取并各自计数；`totals` 是任务间的求和（`lastRound` 取最大轮次及其 verdict）。**不允许**只读第一个任务的账本——那会把 A 任务的 bug 记到 B 头上。
+
+**本地账本模式**没有 trellis 任务，用 `<root>/.dsh/claude-review/ledger/task.json` 造一个伪任务（缺文件时 id=`local`、标题取目录名），否则本地模式下任务表恒为空、面板无从展示。
+
+**任务上的 `ledgerDir` 不出现在响应里**：模型层解构剔除，客户端只看到 `bugs` 与 `rounds` 数字。
 
 ### 5.3 bug 计数口径（必须与审核插件一致）
 

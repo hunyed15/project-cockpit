@@ -1624,3 +1624,13 @@ git tag v0.1.0
 **Spec 覆盖**：§1 目的/成功标准 → Task 5/7；§2 独立插件 → 全计划结构；§3 位置 → Task 7；§4 架构 → Task 6/7；§5 数据契约 → Task 2/5/6；§5.3 口径 → Task 1；§6 阶段门 → Task 3；§7 行动层 → Task 8；§8 错误处理 → Task 2/6/8；§9 测试 → 各任务；§10 风险 → Global Constraints + Task 8 探针；§11 里程碑 → Task 1-9 顺序。
 
 **已知偏离**：`hasPrd` 在 Task 5 用 `specFiles > 0` 近似（见 Task 5 备注）；spec §4.1 的 `panel.js` 单文件在计划中拆成 `count/gates/next-action/panel` 四个纯函数模块，接口向后兼容。
+
+## 执行变更记录
+
+**2026-11-18（执行 Task 1-5 后，按用户要求补的洞）**：原计划 Task 2/5 让 `readProject` 返回单一 `ledger` 并取 `tasks[0].ledgerDir`，这在多任务项目上会把 A 的 bug 记到 B 头上。已改为：
+
+- `readProject` 的 trellis 模式返回 `ledger = { dir: null, kind: 'trellis' }`，每个任务自带 `ledgerDir`；
+- 新增 `readEvidence(root)`：逐任务读账本并挂在 `task.ledger` 上，同时生成 `project/tasks/warnings`；
+- `buildPanelModel` 改为按任务计数 + `totals` 聚合（`lastRound` 取最大轮次），响应不含 `ledgerDir`；
+- 本地账本模式生成伪任务（读 `ledger/task.json`，缺文件用 `id=local`）；
+- 测试从 31 增至 35（新增多任务不串账本、伪任务、路径不泄漏）。
