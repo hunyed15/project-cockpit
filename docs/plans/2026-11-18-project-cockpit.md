@@ -1627,6 +1627,13 @@ git tag v0.1.0
 
 ## 执行变更记录
 
+**2026-11-18（执行 Task 8，探针改变了方案）**：原计划让 `POST /api/action` 由 Host 投递指令。探针结论：DSH 0.2.2-rc.3 没有向活跃会话注入用户消息的公开 API（`commands.execute` 只跑斜杠命令、不发给模型；`subagents.sendMessage` 是父子会话语义；`agents` 只暴露 `{id}`）。因此：
+
+- **取消** `POST /project-cockpit/api/action` 与 `lib/action.js`；
+- 行动层改为浏览器侧：面板按钮写入模块级槽位 + `ctx.layout.selectPanel('conversation')`，由 `conversation.input.dock`（session scope，有 `inputActions`）的常驻条执行 `setDraft()` / `submit()`；
+- 语义是两步点击（面板 → 发送），不自动发送，用户能看见将要发出的原文；
+- 客户端 smoke 新增 2 个断言：常驻条注册与真的使用 `inputActions`。
+
 **2026-11-18（执行 Task 1-5 后，按用户要求补的洞）**：原计划 Task 2/5 让 `readProject` 返回单一 `ledger` 并取 `tasks[0].ledgerDir`，这在多任务项目上会把 A 的 bug 记到 B 头上。已改为：
 
 - `readProject` 的 trellis 模式返回 `ledger = { dir: null, kind: 'trellis' }`，每个任务自带 `ledgerDir`；

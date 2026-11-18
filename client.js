@@ -9,6 +9,28 @@ window.__ModuleLoader__.load({
     const PANEL_ID = 'project-cockpit'
     const API = '/project-cockpit/api'
 
+    // 面板是 root scope，拿不到 session，也没有任何公开的「向会话注入用户消息」API
+    // （Host 侧 commands.execute 只跑斜杠命令、不会把文本发给模型）。
+    // 所以行动层走已验证的路径：面板把指令放进这个模块级槽位 → 跳到对话 →
+    // 由 conversation.input.dock 上的常驻条用 inputActions.setDraft/submit 真正发出去。
+    const pending = { value: null, listeners: new Set() }
+    const setPending = (value) => {
+      pending.value = value
+      for (const listener of pending.listeners) listener()
+    }
+    const usePending = () => {
+      const [value, setValue] = React.useState(pending.value)
+      React.useEffect(() => {
+        const listener = () => setValue(pending.value)
+        pending.listeners.add(listener)
+        return () => pending.listeners.delete(listener)
+      }, [])
+      return value
+    }
+
+    // apply 里注入的 layout 服务；面板按钮用它跳回对话。
+    let layout = null
+
     const CSS = `
 .pc-root { height:100%; overflow:auto; padding:0 0 32px; color:var(--dsw-alias-label-primary); background:var(--dsw-alias-bg-base);
   font-family:ui-sans-serif,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; font-size:13px; line-height:1.55; }
@@ -35,6 +57,12 @@ window.__ModuleLoader__.load({
 .pc-btn { border:1px solid var(--dsw-alias-border-l2); background:transparent; color:var(--dsw-alias-label-primary);
   border-radius:6px; padding:5px 12px; cursor:pointer; font-size:12px; }
 .pc-btn:hover { border-color:var(--dsw-alias-brand-primary); color:var(--dsw-alias-brand-primary); }
+.pc-btn-primary { border-color:var(--dsw-alias-brand-primary); color:var(--dsw-alias-brand-primary); }
+.pc-dock { max-width:1120px; margin:0 auto 8px; border:1px solid var(--dsw-alias-border-l2); border-radius:10px;
+  background:var(--dsw-alias-bg-layer-1); padding:10px 14px; display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap; }
+.pc-dock-main { flex:1 1 320px; min-width:240px; }
+.pc-dock-label { font-weight:600; color:var(--dsw-alias-brand-primary); }
+.pc-dock-actions { display:flex; gap:8px; }
 .pc-select { border:1px solid var(--dsw-alias-border-l2); background:var(--dsw-alias-bg-layer-2); color:inherit; border-radius:6px; padding:4px 8px; font-size:12px; }
 `
 
@@ -133,6 +161,44 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /**
+     * 对话输入框上方的常驻条：只有面板点过「让 AI 执行下一步」才出现。
+     * 这里才拿得到 inputActions（session scope），面板拿不到。
+     */
+    function NextActionDock(props) {
+      const value = usePending()
+      if (!value) return null
+      const actions = props.inputActions
+      const fill = () => {
+        if (actions) actions.setDraft(value.instruction)
+        setPending(null)
+      }
+      const send = () => {
+        if (!actions) return
+        actions.setDraft(value.instruction)
+        actions.submit()
+        setPending(null)
+      }
+      return h(
+        'div',
+        { className: 'pc-dock' },
+        h(
+          'div',
+          { className: 'pc-dock-main' },
+          h('div', { className: 'pc-dock-label' }, `项目驾驶舱 · ${value.label}`),
+          h('div', null, value.instruction),
+          h('div', { className: 'pc-muted' }, value.reason),
+        ),
+        h(
+          'div',
+          { className: 'pc-dock-actions' },
+          h('button', { className: 'pc-btn pc-btn-primary', onClick: send }, '发送'),
+          h('button', { className: 'pc-btn', onClick: fill }, '填入输入框'),
+          h('button', { className: 'pc-btn', onClick: () => setPending(null) }, '忽略'),
+        ),
+      )
+    }
+
     function Page() {
       const { workspaces, selected, setSelected, model, error, loading, refresh } = useCockpit()
       const style = h('style', { key: 'pc-css' }, CSS)
@@ -189,6 +255,23 @@ window.__ModuleLoader__.load({
             h('div', { className: 'pc-action-label' }, model.nextAction.label),
             h('div', { className: 'pc-action-text' }, model.nextAction.instruction),
             h('div', { className: 'pc-muted' }, model.nextAction.reason),
+            h(
+              'div',
+              { className: 'pc-dock-actions', style: { marginTop: 10 } },
+              h(
+                'button',
+                {
+                  className: 'pc-btn pc-btn-primary',
+                  onClick: () => {
+                    setPending(model.nextAction)
+                    if (layout && typeof layout.selectPanel === 'function') {
+                      layout.selectPanel('conversation')
+                    }
+                  },
+                },
+                '让 AI 执行下一步',
+              ),
+            ),
           ),
           h(
             'div',
@@ -244,13 +327,21 @@ window.__ModuleLoader__.load({
     }
 
     return {
-      inject: ['slots'],
+      inject: ['slots', 'layout'],
       apply(ctx) {
+        layout = ctx.layout || null
         ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID }, Page))
         ctx.slots.inject('sidebar.panellist', () =>
           ctx.slots.register(
             { name: 'sidebar.panellist', id: PANEL_ID, order: 20, label: () => '项目' },
             Icon,
+          ),
+        )
+        // 行动层的落点：session scope 才有 inputActions
+        ctx.slots.inject('conversation.input.dock', () =>
+          ctx.slots.register(
+            { name: 'conversation.input.dock', id: 'project-cockpit-next', order: 30, label: () => '项目下一步' },
+            NextActionDock,
           ),
         )
       },

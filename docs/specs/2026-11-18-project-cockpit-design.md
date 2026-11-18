@@ -91,7 +91,7 @@ Host 插件（bundle row）
 |---|---|---|
 | GET | `/project-cockpit/api/workspaces` | 已注册工作区 `[{id,title,path}]`，供面板切换项目 |
 | GET | `/project-cockpit/api/panel?path=<abs>` | 面板模型；`path` 省略时取第一个工作区 |
-| POST | `/project-cockpit/api/action` | 行动层（§7），body `{sessionId, instruction}` |
+| POST | ~~`/api/action`~~ | **已取消**：DSH 0.2.2-rc.3 没有向活跃会话注入用户消息的公开 API（详见 §7），行动层改走浏览器侧 |
 
 `GET /panel` 响应：
 
@@ -188,12 +188,22 @@ Host 插件（bundle row）
 | 无 `.trellis` | `init` | 建议初始化 trellis（只提示，不代执行） |
 | 无审核轮次 | `first-review` | 跑第一次 `claude_review(mode:"full")` |
 
-**待验证 API（实现第一步必须打通，否则降级）**：Host 侧如何向指定 session 注入一条用户消息/命令。候选路径：
+**待验证 API（已探针，结论：Host 侧不可用）**：
 
-1. `ctx.commands.execute(agent, line, [], signal)`（`user-actions.md` 推荐的客户端可达入口）——需要目标 Agent；
-2. 若 1 不可用：注册插件自有命令 `/cockpit-next`，由会话内用户触发，面板只负责生成并复制指令（**降级但仍可用**）。
+| 候选 | 结论 |
+|---|---|
+| `ctx.commands.execute(agent, line, [], signal)` | 只执行**已知斜杠命令**，返回 `CommandResult {kind:'success'|'error', text}`，**不会把文本发给模型** |
+| `ctx.subagents.sendMessage(sender, targetId, content, opts)` | 语义是"父→子会话消息"，不是向当前会话注入用户消息 |
+| `ctx.agents.*` | 只有 create/resume/announce/get/list，`Agent` 接口仅 `{ id }` |
+| Host 任何"prompt/session/input"服务 | 目录里不存在 |
 
-降级判定必须在实现首日给出结论，不留到 UI 做完才发现。
+**因此行动层改走浏览器侧（已验证 API）**：
+
+1. 面板按钮（root scope）把 `nextAction` 放进模块级槽位，并 `ctx.layout.selectPanel('conversation')` 跳回对话；
+2. 注册 `conversation.input.dock`（list / **session scope**，order 30）作为常驻条——该插槽的 `standardProps` 含 `inputActions: InputActions`；
+3. 常驻条三个按钮：**发送**（`setDraft(instruction)` + `submit()`）、**填入输入框**（只 `setDraft`）、**忽略**。
+
+代价是两步点击（面板 → 发送），换来的是**真的走用户同一条发送通道**，不伪造、不绕过会话。`InputActions` 的 `setDraft(text)` / `submit()` 来自 `dsh-client-ui-conversation/src/client/contract/input.ts:282,292`。
 
 ## 8. 错误处理
 
@@ -223,7 +233,8 @@ Host 插件（bundle row）
 | `main` key 与 panellist id 不一致 | 点击抛错 | 单一常量导出，测试断言二者同源 |
 | root scope 面板拿不到 session | 无法定位"当前项目" | 用 active workspace 推导；实施首日验证 `usePanelInfo`/`useWorkspaces` 在 `main` 槽可用 |
 | 阶段门"推断"被当成事实 | 误导决策 | 每门强制显示 `basis`；`current` 只允许一个 |
-| 注入消息的 Host API 不可用 | 行动层失效 | §7 的两级降级路径 |
+| 注入消息的 Host API 不可用 | 行动层失效 | **已发生**：改走浏览器侧 `inputActions`（§7），代价是两步点击 |
+| 面板与对话常驻条之间的槽位只有模块内存 | 刷新页面后待发送指令丢失 | 可接受：指令由面板随时重新生成；不做持久化 |
 | `.dsh/plugin-state/` 与 trellis 托管冲突 | 文件被覆盖 | 该目录只写不读关键状态；不与 `.dsh/DSH.md`、`.dsh/skills/*` 重叠 |
 
 ## 11. 里程碑（一条链路跑通再谈下一页）

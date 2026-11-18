@@ -49,6 +49,20 @@ test('阶段门把 basis 投影成可读提示', async () => {
   assert.ok(source.includes('gate.basis'), '阶段门必须展示 basis，否则推断会被当成事实')
 })
 
+test('注册对话常驻条作为行动层落点，并真的用 inputActions 发送', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes("'conversation.input.dock'"), '行动层必须注册到 session scope 的常驻条')
+  assert.ok(source.includes('inputActions'), '必须从插槽 props 取 inputActions')
+  assert.ok(source.includes('setDraft('), '必须把指令写进输入框')
+  assert.ok(source.includes('submit()'), '必须真正提交，而不是只复制')
+})
+
+test('面板按钮先落槽位再跳回对话（面板是 root scope 拿不到 inputActions）', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('setPending(model.nextAction)'))
+  assert.ok(source.includes("selectPanel('conversation')"))
+})
+
 test('locale 文件含 meta.title 与 meta.description', async () => {
   for (const file of ['locale/zh.json', 'locale/en.json']) {
     const dict = JSON.parse(await read(file))
