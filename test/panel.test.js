@@ -156,4 +156,5 @@ test('截断只压列表，卡点数与阶段门仍按全部任务算', () => {
 test('任务未超限时 truncated 为 false', () => {
   const model = buildPanelModel(evidence())
   assert.equal(model.truncated, false)
+  assert.equal(model.taskLimit, 200)
 })

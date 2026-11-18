@@ -59,7 +59,8 @@ test('注册对话常驻条作为行动层落点，并真的用 inputActions 发
 
 test('面板按钮先落槽位再跳回对话（面板是 root scope 拿不到 inputActions）', async () => {
   const source = await read('client.js')
-  assert.ok(source.includes('setPending(model.nextAction)'))
+  assert.ok(source.includes('setPending({'), '必须把动作放进槽位')
+  assert.ok(source.includes('...model.nextAction'), '槽位里要带完整动作信息')
   assert.ok(source.includes("selectPanel('conversation')"))
 })
 
@@ -141,6 +142,72 @@ test('发送痕迹用可订阅 store，markSent 后同一次挂载就能显示',
   assert.ok(source.includes('sentStore.listeners'))
 })
 
+test('待发送指令带项目身份，换项目即清空', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('projectPath:'), 'pending 必须带项目路径')
+  assert.ok(source.includes('projectName:'), 'pending 必须带项目名')
+  assert.ok(source.includes('setPending(null)\n      }, [selected])'), '换项目必须清空 pending')
+})
+
+test('常驻条可被聚焦并播报（跳转后焦点不落 body）', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('tabIndex: -1'))
+  assert.ok(source.includes('boxRef.current.focus()'))
+  assert.ok(source.includes("role: 'status',"))
+})
+
+test('空工作区是空态而不是故障：不给必然失败的重试', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('setEmpty(true)'))
+  assert.ok(source.includes('还没有项目'), '需要独立空态文案')
+  assert.ok(!source.includes('没有已注册的工作区，先在一个目录里打开会话'), '空态不得走 error 通道')
+})
+
+test('切换项目时标题跟下拉走，并声明下面是旧数据', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('const stale ='), '需要识别陈旧窗口')
+  assert.ok(source.includes('正在切换到'), '必须声明当前展示的是上一个项目的数据')
+  assert.ok(source.includes('pageTitle'), '标题必须跟选中项目走')
+})
+
+test('有 ErrorBoundary，字段缺失不会白屏', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('class Boundary extends React.Component'))
+  assert.ok(source.includes('getDerivedStateFromError'))
+  assert.ok(source.includes('PanelRoot'))
+})
+
+test('截断上限来自模型，不在客户端写死', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('model.taskLimit'))
+  assert.ok(!source.includes('只显示前 200 个'), '不得写死 200')
+})
+
+test('展开按钮有 aria-controls，被展开内容是列表语义', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes("'aria-controls': 'pc-gate-details'"))
+  assert.ok(source.includes("id: 'pc-gate-details'"))
+  assert.ok(/h\(\s*'ol'/.test(source), '阶段门应为有序列表')
+  assert.ok(/h\(\s*'li'/.test(source), '阶段门条目应为 li')
+})
+
+test('复制失败必须说出来，不能静默', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes("setCopyState('fail')"))
+  assert.ok(source.includes('复制失败'))
+  assert.ok(source.includes('copyTimer'), '定时器需要清理引用')
+})
+
+test('正文行长收窄，表格保持全宽', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('max-width:46em'))
+})
+
+test('更新区域带 aria-busy，而不是只在按钮上', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes("'aria-busy': loading ? 'true' : 'false' },") || source.includes("className: 'pc-body', 'aria-busy'"))
+})
+
 test('刷新失败时保留旧数据并给重试，不整页替换', async () => {
   const source = await read('client.js')
   assert.ok(source.includes('刷新失败，下面是'), '必须有"旧数据 + 时间"的降级横幅')
@@ -194,5 +261,5 @@ test('卡片标题不用 uppercase 空转（中文无大小写）', async () => 
 test('截断任务时给出明确提示，不让人以为看到的就是全部', async () => {
   const source = await read('client.js')
   assert.ok(source.includes('model.truncated'))
-  assert.ok(source.includes('只显示前 200 个'))
+  assert.ok(source.includes('只显示前 ${model.taskLimit'))
 })

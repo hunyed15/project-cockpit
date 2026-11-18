@@ -75,7 +75,24 @@ window.__ModuleLoader__.load({
     const formatTime = (value) => {
       const date = value instanceof Date ? value : new Date(value)
       if (Number.isNaN(date.getTime())) return ''
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      // 固定 24 小时制：否则部分 locale 会出 "10:41:03 PM"，宽度和别处对不上
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+    }
+    const formatRelative = (value) => {
+      const date = value instanceof Date ? value : new Date(value)
+      if (Number.isNaN(date.getTime())) return ''
+      const diff = Date.now() - date.getTime()
+      if (diff < 60_000) return '刚刚'
+      if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`
+      const now = new Date()
+      const sameDay = date.toDateString() === now.toDateString()
+      return sameDay
+        ? formatTime(date).slice(0, 5)
+        : `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${formatTime(date).slice(0, 5)}`
+    }
+    const samePath = (left, right) => {
+      const norm = (value) => String(value || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+      return norm(left) !== '' && norm(left) === norm(right)
     }
 
     const CSS = `
@@ -92,6 +109,8 @@ h1.pc-name { margin:0; font-size:16px; font-weight:600; }
 .pc-chip-ok { color:var(--dsw-alias-state-success-primary); }
 .pc-chip-unknown { color:var(--dsw-alias-label-secondary); border-style:dashed; }
 .pc-time { font-variant-numeric:tabular-nums; }
+.pc-banner-inline { margin:0; max-width:none; }
+.pc-meta { font-size:12px; margin-top:10px; }
 .pc-spacer { flex:1 1 auto; }
 .pc-banner { max-width:1120px; margin:12px auto 0; padding:8px 14px; border-radius:8px; display:flex; gap:12px;
   align-items:flex-start; justify-content:space-between; flex-wrap:wrap; font-size:12px;
@@ -101,13 +120,15 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
   padding-left:8px; border-left:2px solid var(--dsw-alias-border-l2); line-height:1.4; }
 .pc-action-label { font-size:16px; font-weight:600; color:var(--dsw-alias-brand-primary); }
 .pc-action-text { margin:6px 0 4px; white-space:pre-wrap; overflow-wrap:anywhere; }
+/* 中文舒适行长约 40 字；1120px 容器下 13px 会有 80 字/行，扫读两次才读完 */
+.pc-action-text, .pc-gate-summary, .pc-gate-basis, .pc-dock-main > div { max-width:46em; }
 .pc-action-row { display:flex; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap; }
 .pc-gate-summary { font-size:14px; font-weight:600; margin-bottom:10px; }
 .pc-progress { display:flex; gap:4px; margin:0 0 8px; }
 .pc-seg { flex:1 1 0; height:6px; border-radius:999px; background:var(--dsw-alias-bg-layer-2); }
 .pc-seg-done { background:var(--dsw-alias-state-success-primary); }
 .pc-seg-current { background:var(--dsw-alias-state-warn-primary); }
-.pc-gate-list { display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+.pc-gate-list { display:flex; flex-direction:column; gap:6px; margin:8px 0 0; padding:0; list-style:none; }
 .pc-gate { display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; padding:6px 8px; border-radius:6px; }
 .pc-gate-current { background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 10%, transparent); }
 .pc-gate-name { font-weight:600; }
@@ -190,11 +211,16 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
       const [error, setError] = React.useState('')
       const [loading, setLoading] = React.useState(true)
       const [goodAt, setGoodAt] = React.useState(null)
+      const [empty, setEmpty] = React.useState(false)
       const seq = React.useRef(0)
+      const inflight = React.useRef(false)
 
       // 序号守卫：轮询与手动刷新并发时，旧响应不许覆盖新响应。
+      // 另外跳过"已有请求在飞"的静默轮询，避免 8s 轮询周期 < 10s 超时时叠请求。
       const loadPanel = React.useCallback(async (path, silent) => {
+        if (silent && inflight.current) return
         const mine = ++seq.current
+        inflight.current = true
         if (!silent) setLoading(true)
         try {
           const next = await getJson(`${API}/panel${path ? `?path=${encodeURIComponent(path)}` : ''}`)
@@ -206,6 +232,7 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
           if (mine !== seq.current) return
           setError(String(failure && failure.message ? failure.message : failure))
         } finally {
+          inflight.current = false
           if (mine === seq.current) setLoading(false)
         }
       }, [])
@@ -220,7 +247,8 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
             setWorkspaces(items)
             setSelected((prev) => prev || (items[0] ? items[0].path : ''))
             if (items.length === 0) {
-              setError('没有已注册的工作区，先在一个目录里打开会话')
+              // 空态不是故障：不该走 error 通道，也不该给一个必然失败的重试。
+              setEmpty(true)
               setLoading(false)
             }
           })
@@ -252,17 +280,17 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
         if (selected) loadPanel(selected, false)
       }, [loadPanel, selected])
 
-      return { workspaces, selected, setSelected, model, error, loading, goodAt, refresh }
+      return { workspaces, selected, setSelected, model, error, loading, goodAt, empty, refresh }
     }
 
     function GateList(props) {
       const gates = props.gates
       return h(
-        'div',
-        { className: 'pc-gate-list' },
+        'ol',
+        { className: 'pc-gate-list', id: 'pc-gate-details' },
         gates.map((gate) =>
           h(
-            'div',
+            'li',
             {
               key: gate.name,
               className: `pc-gate pc-gate-${gate.state}`,
@@ -302,6 +330,13 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
      */
     function NextActionDock(props) {
       const value = usePending()
+      const boxRef = React.useRef(null)
+      // 从面板跳过来时焦点会落在 body；这里主动接管，读屏才知道多了这条通栏。
+      React.useEffect(() => {
+        if (value && boxRef.current && typeof boxRef.current.focus === 'function') {
+          boxRef.current.focus()
+        }
+      }, [value])
       if (!value) return null
       const actions = props.inputActions
       const fill = () => {
@@ -315,13 +350,21 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
         markSent(value.kind)
         setPending(null)
       }
+      // 项目名进标题：多项目时"这条指令属于谁"必须一眼可见。
+      const where = value.projectName || value.projectPath || ''
       return h(
         'div',
-        { className: 'pc-dock' },
+        {
+          className: 'pc-dock',
+          ref: boxRef,
+          tabIndex: -1,
+          role: 'status',
+          'aria-label': `项目驾驶舱下一步${where ? `（${where}）` : ''}`,
+        },
         h(
           'div',
           { className: 'pc-dock-main' },
-          h('div', { className: 'pc-dock-label' }, `项目驾驶舱 · ${value.label}`),
+          h('div', { className: 'pc-dock-label' }, `项目驾驶舱 · ${where ? `${where} · ` : ''}${value.label}`),
           h('div', null, value.instruction),
           h('div', { className: 'pc-muted' }, value.reason),
         ),
@@ -336,27 +379,44 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
     }
 
     function Page() {
-      const { workspaces, selected, setSelected, model, error, loading, goodAt, refresh } = useCockpit()
+      const { workspaces, selected, setSelected, model, error, loading, goodAt, empty, refresh } =
+        useCockpit()
       const [gatesOpen, setGatesOpen] = React.useState(false)
-      const [copied, setCopied] = React.useState(false)
+      const [copyState, setCopyState] = React.useState('idle')
+      const copyTimer = React.useRef(null)
       const sent = useSent()
+
+      React.useEffect(() => () => clearTimeout(copyTimer.current), [])
+
+      // 换项目就丢掉上一条待发送指令：否则可能把 A 项目的指令发到 B 项目。
+      React.useEffect(() => {
+        setPending(null)
+      }, [selected])
 
       const copyInstruction = () => {
         if (!model) return
         const write = navigator.clipboard && navigator.clipboard.writeText
-        if (!write) return
+        if (!write) {
+          setCopyState('fail')
+          return
+        }
         write.call(navigator.clipboard, model.nextAction.instruction).then(
           () => {
-            setCopied(true)
-            setTimeout(() => setCopied(false), 1600)
+            setCopyState('done')
+            clearTimeout(copyTimer.current)
+            copyTimer.current = setTimeout(() => setCopyState('idle'), 1600)
           },
-          () => setCopied(false),
+          () => setCopyState('fail'),
         )
       }
 
       const sendToAgent = () => {
         if (!model) return
-        setPending(model.nextAction)
+        setPending({
+          ...model.nextAction,
+          projectPath: model.project ? model.project.path : '',
+          projectName: model.project ? model.project.name : '',
+        })
         if (layout && typeof layout.selectPanel === 'function') layout.selectPanel('conversation')
       }
 
@@ -387,13 +447,27 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
           ? `下一阶段：${current.name}（第二版接入，当前不影响）`
           : `卡在「${current.name}」：${current.basis}`
 
+      // 切换项目的瞬间，下拉已经是新项目、数据还是旧的：标题跟下拉走，
+      // 并用一条横幅说明"下面是上一个项目的数据"，不让人误读。
+      const selectedWorkspace = workspaces.find((item) => samePath(item.path, selected))
+      const selectedTitle = selectedWorkspace
+        ? selectedWorkspace.title || selectedWorkspace.path
+        : selected
+      const stale =
+        Boolean(model && model.project) && selected !== '' && !samePath(model.project.path, selected)
+      const pageTitle = stale
+        ? selectedTitle
+        : model && model.project
+          ? model.project.name
+          : selectedTitle || '项目'
+
       const header = h(
         'header',
         { className: 'pc-head' },
         h(
           'div',
           { className: 'pc-head-inner' },
-          h('h1', { className: 'pc-name' }, model && model.project ? model.project.name : '项目'),
+          h('h1', { className: 'pc-name' }, pageTitle),
           model ? h('span', { className: chipClass, role: 'status' }, chipText) : null,
           workspaces.length > 1
             ? h(
@@ -442,10 +516,17 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
         cards = h(
           React.Fragment,
           null,
+          stale
+            ? h(
+                'section',
+                { className: 'pc-banner pc-banner-inline', role: 'status' },
+                h('span', null, `正在切换到「${selectedTitle}」…下面是上一个项目的数据。`),
+              )
+            : null,
           model.warnings && model.warnings.length > 0
             ? h(
                 'section',
-                { className: 'pc-banner', role: 'status' },
+                { className: 'pc-banner pc-banner-inline', role: 'status' },
                 h(
                   'span',
                   null,
@@ -457,8 +538,12 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
           model.truncated
             ? h(
                 'section',
-                { className: 'pc-banner', role: 'status' },
-                h('span', null, '任务过多，只显示前 200 个；卡点数与阶段门仍按全部任务计算。'),
+                { className: 'pc-banner pc-banner-inline', role: 'status' },
+                h(
+                  'span',
+                  null,
+                  `任务过多，只显示前 ${model.taskLimit || model.tasks.length} 个；卡点数与阶段门仍按全部任务计算。`,
+                ),
               )
             : null,
           h(
@@ -467,26 +552,29 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
             h('h2', { className: 'pc-card-title' }, '下一步'),
             h('div', { className: 'pc-action-label' }, model.nextAction.label),
             h('div', { className: 'pc-action-text' }, model.nextAction.instruction),
-            h('div', { className: 'pc-muted' }, model.nextAction.reason),
-            lastSent ? h('div', { className: 'pc-muted' }, `上次发送 ${formatTime(lastSent)} · 等账本更新`) : null,
+            h('div', { className: 'pc-muted pc-action-text' }, model.nextAction.reason),
+            lastSent
+              ? h(
+                  'div',
+                  { className: 'pc-muted', title: new Date(lastSent).toLocaleString() },
+                  `上次发送 ${formatRelative(lastSent)}`,
+                )
+              : null,
             h(
               'div',
               { className: 'pc-action-row' },
               h('button', { className: 'pc-btn pc-btn-primary', onClick: sendToAgent }, '去对话发送'),
-              h('button', { className: 'pc-btn', onClick: copyInstruction }, copied ? '已复制' : '复制指令'),
+              h(
+                'button',
+                { className: 'pc-btn', onClick: copyInstruction },
+                copyState === 'done' ? '已复制' : copyState === 'fail' ? '复制失败，请手动选择' : '复制指令',
+              ),
             ),
           ),
           h(
             'section',
             { className: 'pc-card' },
-            h(
-              'h2',
-              {
-                className: 'pc-card-title',
-                title: `trellis ${model.trellis.version || '?'} · spec ${model.trellis.specFiles} 个文件 · ${model.tasks.length} 个任务`,
-              },
-              '阶段门（推断，非声明）',
-            ),
+            h('h2', { className: 'pc-card-title' }, '阶段门（推断，非声明）'),
             h('div', { className: 'pc-gate-summary' }, gateSummary),
             h(
               'div',
@@ -499,10 +587,17 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
                 className: 'pc-btn-link',
                 onClick: () => setGatesOpen((open) => !open),
                 'aria-expanded': gatesOpen ? 'true' : 'false',
+                'aria-controls': 'pc-gate-details',
               },
               gatesOpen ? '收起七道门的依据' : '展开七道门的依据',
             ),
             gatesOpen ? h(GateList, { gates: model.gates }) : null,
+            // 环境元数据放到可见位置：塞进 h2 的 title 里只有鼠标悬停能拿到。
+            h(
+              'div',
+              { className: 'pc-muted pc-meta' },
+              `trellis ${model.trellis.version || '未知'} · spec ${model.trellis.specFiles} 个文件 · ${model.tasks.length} 个任务`,
+            ),
           ),
           h(
             'section',
@@ -553,19 +648,60 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
           banner,
           h(
             'main',
-            { className: 'pc-body' },
-            loading && !model ? h('div', { className: 'pc-card pc-muted', role: 'status' }, '加载中…') : null,
+            { className: 'pc-body', 'aria-busy': loading ? 'true' : 'false' },
+            empty
+              ? h(
+                  'div',
+                  { className: 'pc-card' },
+                  h('h2', { className: 'pc-card-title' }, '还没有项目'),
+                  h('div', null, '在任意目录里打开一个会话后，这里会自动出现该项目。'),
+                )
+              : null,
+            loading && !model && !empty
+              ? h('div', { className: 'pc-card pc-muted', role: 'status' }, '加载中…')
+              : null,
             cards,
           ),
         ),
       )
     }
 
+    // 渲染期异常（比如服务端字段缺失）不能让面板白屏：兜住并给一句可读的原因。
+    class Boundary extends React.Component {
+      constructor(props) {
+        super(props)
+        this.state = { error: null }
+      }
+      static getDerivedStateFromError(error) {
+        return { error }
+      }
+      render() {
+        if (this.state.error) {
+          const message = String(this.state.error && this.state.error.message ? this.state.error.message : this.state.error)
+          return h(
+            'div',
+            { className: 'pc-root' },
+            h(
+              'div',
+              { className: 'pc-banner', role: 'alert' },
+              h('span', null, `面板渲染失败：${message}`),
+              h('button', { className: 'pc-btn', onClick: () => this.setState({ error: null }) }, '重试'),
+            ),
+          )
+        }
+        return this.props.children
+      }
+    }
+
+    function PanelRoot() {
+      return h(Boundary, null, h(Page))
+    }
+
     return {
       inject: ['slots', 'layout'],
       apply(ctx) {
         layout = ctx.layout || null
-        ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID }, Page))
+        ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID }, PanelRoot))
         ctx.slots.inject('sidebar.panellist', () =>
           ctx.slots.register(
             { name: 'sidebar.panellist', id: PANEL_ID, order: 20, label: () => '项目' },
