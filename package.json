@@ -1,0 +1,25 @@
+{
+  "name": "@hunyed15/project-cockpit",
+  "version": "0.1.0",
+  "description": "Project cockpit for DeepSeek Harness: read-only project progress (where we are, what blocks, next step) with one action that drives the agent.",
+  "license": "MIT",
+  "author": "hunyed15",
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "lib",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "dsh": ">=0.2.2-rc.3 <0.3.0"
+  }
+}
