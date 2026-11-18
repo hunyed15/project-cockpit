@@ -85,7 +85,7 @@ Host 插件（bundle row）
 ```json
 {
   "project": { "path": "D:/Coding/foo", "name": "foo" },
-  "trellis": { "initialized": true, "version": "2.1.0", "source": "D:/Coding/foo/.trellis" },
+  "trellis": { "initialized": true, "version": "0.6.17", "source": "D:/Coding/foo/.trellis" },
   "tasks": [
     {
       "id": "00-bootstrap-guidelines",
@@ -114,6 +114,8 @@ Host 插件（bundle row）
 }
 ```
 
+> 示例数据取自本机 `claude-code-review` 仓库（trellis 0.6.17、spec 10 个文件、15 个 commit），仅示意字段形态。
+
 ### 5.2 只读来源与容错
 
 | 来源 | 缺失时 | 字段缺失时 |
@@ -130,6 +132,7 @@ Host 插件（bundle row）
 - 只统计 `failOn` 命中的级别（默认 `critical/important`）；`failOn` 从该轮 `review-N.json` 的 `meta.failOn` 读取，**旧报告无该字段时回退默认 `critical/important`**。
 - `blocking` = 该级别中未处置（无 `dispositions.jsonl` 条目，或处置状态不是 `fixed/deferred/counter-evidence`）的数量。
 - `open` = 该级别未处置 + 已 `fixed` 待复检 的数量。
+- **处置匹配规则**：disposition 的 `round` 必须等于该问题所在报告的 `meta.round`（跨轮处置不算）；优先按 `key` 匹配，无 `key` 时按该报告的 `issues` 原始下标匹配。与 claude-code-review 的轮次守卫一致。
 - 这一口径直接照抄 claude-code-review 面板的实现语义，避免两个插件对同一个账本给出两个数字。
 
 ## 6. 阶段门推导（推断，不是声明）
