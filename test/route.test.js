@@ -82,6 +82,26 @@ test('本插件前缀之外的路径不接管', async () => {
   assert.equal(response.status, 404)
 })
 
+test('工作区服务对不存在的路径抛 ENOENT 时回 403 而不是 500', async () => {
+  const response = await routes({
+    resolveWorkspace: async () => {
+      const error = new Error("ENOENT: no such file or directory, realpath 'C:\\nope'")
+      error.code = 'ENOENT'
+      throw error
+    },
+  }).handle(get('/project-cockpit/api/panel?path=C:/nope'))
+  assert.equal(response.status, 403)
+})
+
+test('工作区服务的真实故障仍然回 500', async () => {
+  const response = await routes({
+    resolveWorkspace: async () => {
+      throw new Error('registry exploded')
+    },
+  }).handle(get('/project-cockpit/api/panel?path=D:/Coding/foo'))
+  assert.equal(response.status, 500)
+})
+
 test('HEAD 与 GET 同样可用', async () => {
   const response = await routes().handle(
     new Request('http://127.0.0.1/project-cockpit/api/workspaces', { method: 'HEAD' }),

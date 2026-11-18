@@ -72,3 +72,63 @@ test('locale 文件含 meta.title 与 meta.description', async () => {
     assert.ok(dict.meta.description.length > 0)
   }
 })
+
+test('工作区列表只拉一次，不覆盖用户选中的项目', async () => {
+  const source = await read('client.js')
+  assert.ok(
+    source.includes('setSelected((prev) => prev ||'),
+    '必须保留用户已选项目，否则下拉切换会被打回第一个',
+  )
+})
+
+test('面板请求有序号守卫与超时，避免旧响应覆盖新响应', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('seq.current'), '缺少请求序号守卫')
+  assert.ok(source.includes('AbortController'), '缺少超时中断')
+  assert.ok(source.includes('请求超时'), '超时必须给用户可见的错误')
+})
+
+test('200 但非 JSON 时必须报错，不能永久停在加载中', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('响应不是 JSON'), '必须区分"非 JSON 响应"与"空数据"')
+})
+
+test('顶栏显示卡点数与更新时间（totals / generatedAt 不再是死数据）', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('totals.blocking'))
+  assert.ok(source.includes('generatedAt'))
+  assert.ok(source.includes('卡点'))
+  assert.ok(source.includes('更新于'))
+})
+
+test('刷新失败时保留旧数据并给重试，不整页替换', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('刷新失败，下面是'), '必须有"旧数据 + 时间"的降级横幅')
+  assert.ok(source.includes('重试'))
+  assert.ok(source.includes("disabled: loading"), '刷新期间必须禁用，避免并发')
+})
+
+test('阶段门：一句话总结 + 进度线 + 可展开依据', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('卡在「'), '必须把当前门说成一句人话')
+  assert.ok(source.includes('pc-seg'), '必须有进度线')
+  assert.ok(source.includes('aria-expanded'), '展开状态必须对读屏可见')
+  assert.ok(source.includes('aria-current'), '当前门必须有 aria-current')
+})
+
+test('无障碍：标题层级、表格 scope、select label、焦点样式', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes("h('h1'"), '项目名必须是 h1')
+  assert.ok(source.includes("h('h2'"), '卡片标题必须是 h2')
+  assert.ok(source.includes("scope: 'col'"), '表头必须有 scope')
+  assert.ok(source.includes("'aria-label': '项目工作区'"), 'select 必须有可访问名')
+  assert.ok(source.includes(':focus-visible'), '必须有键盘焦点样式')
+  assert.ok(source.includes('pc-sr'), '表格需要 caption 用的视觉隐藏样式')
+})
+
+test('发送后留痕：本地记录发送时间用于区分"没做"与"做完待更新"', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('project-cockpit:last-sent'))
+  assert.ok(source.includes('markSent('))
+  assert.ok(source.includes('上次发送'))
+})

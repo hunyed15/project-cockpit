@@ -47,3 +47,9 @@ test('每道门都有非空 basis', () => {
     assert.ok(gate.basis.length > 0)
   }
 })
+
+test('“想清楚”的 basis 不能断言 prd.md 存在（第一版只是近似）', () => {
+  const gates = deriveGates({ ...empty, hasPrd: true, specFiles: 4 })
+  assert.ok(!gates[0].basis.includes('prd.md 存在'), `basis 不得断言 prd 存在：${gates[0].basis}`)
+  assert.ok(gates[0].basis.includes('近似'), '必须标明是近似判断')
+})
