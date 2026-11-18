@@ -64,6 +64,7 @@ plugin_manager(action: "install_bundle", target: "git+https://github.com/hunyed1
 - 需要 DSH `>=0.2.2-rc.3 <0.3.0`（`engines.dsh`，不满足时 `install_bundle` 拒绝）。
 - 只有 Web profile 有意义：`export const inject = ['webServer']`，没有 Web 的行保持 inactive。
 - 面板是 **root scope**，拿不到会话；项目来自**已注册工作区**，路由只接受 `workspaceRegistry` 里登记过的路径，其余 403——本机任何进程都无法让面板去读任意目录。
+- **鉴权边界（重要）**：插件路由是用 `webServer.register({ kind: 'prefix' })` 注册的，**不受 DSH Web 的令牌闸门保护**——未登录的 `GET /` 会返回 401，但同进程的 `GET /project-cockpit/api/panel` 返回 200。它只在 `127.0.0.1` 上监听，读的也只是已登记工作区的 trellis 元数据（任务标题、审核结论），不返回文件内容、不提供写操作。**不要把这个端口的地址暴露到局域网或公网。**
 - 只读：路由只有 `GET`（`POST` 会被 405 拒），不写项目文件、不写缓存。
 
 ## 自测

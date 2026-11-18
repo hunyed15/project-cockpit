@@ -1627,6 +1627,16 @@ git tag v0.1.0
 
 ## 执行变更记录
 
+**2026-11-18（critique #2：20 → 24，修新的 P0/P1 + 回归）**：
+
+- **P0 首屏矛盾**：chip 改三态（待修 N / 无待修问题 / 状态待确认），`warnings` 或 `error` 时不再给绿色结论；阶段门对 `验效果`/`发出去` 改口径为「下一阶段：…（第二版接入，当前不影响）」，只有前五门说"卡在"。
+- **P1 aria-live**：时间戳移除 `aria-live`（每 8 秒播报会变成噪音），加载态由独立 `pc-sr` + `role="status"` 播报；`.pc-time` 加 `tabular-nums` 防秒数抖动。
+- **P1 术语**：`TASK_STATUS`/`VERDICT` 映射表把 `in_progress`、`#13 fix` 翻成中文；`blocking` 列改名「待修」；`bugs.blocking == null` 显示「—」而非绿色 0（"没读到账本"≠"账本说没事"）。
+- **回归修复**：`setSent` 是死代码导致"上次发送"同一次挂载永不显示；改为可订阅的 `sentStore` + `useSent()`，`markSent` 写入后立即通知。
+- **主按钮文案**：「让 AI 执行下一步」→「去对话发送」，承认它是两步中的第一步。
+- **鉴权边界写进文档**：插件路由不受 Web 令牌闸门保护（`GET /` 401 但 `/project-cockpit/api/panel` 200），README 与 DETAIL 明示"仅本机、勿暴露端口"。
+- 测试 72 → 78。
+
 **2026-11-18（评审后补次要观察）**：`impeccable critique` 报 20/40，P0+P1 修完后补剩余项：
 
 - 卡片标题去掉 `text-transform:uppercase`（对中文空转），改用左侧 2px 竖条建立层级；

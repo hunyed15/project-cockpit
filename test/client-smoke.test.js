@@ -93,12 +93,52 @@ test('200 但非 JSON 时必须报错，不能永久停在加载中', async () =
   assert.ok(source.includes('响应不是 JSON'), '必须区分"非 JSON 响应"与"空数据"')
 })
 
-test('顶栏显示卡点数与更新时间（totals / generatedAt 不再是死数据）', async () => {
+test('顶栏显示待修数与更新时间（totals / generatedAt 不再是死数据）', async () => {
   const source = await read('client.js')
   assert.ok(source.includes('totals.blocking'))
   assert.ok(source.includes('generatedAt'))
-  assert.ok(source.includes('卡点'))
+  assert.ok(source.includes('待修'))
   assert.ok(source.includes('更新于'))
+})
+
+test('数据不完整时 chip 不能给绿色结论（首屏不许自相矛盾）', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('pc-chip-unknown'), '需要第三态')
+  assert.ok(source.includes('状态待确认'))
+  assert.ok(source.includes('const degraded'), '降级判断必须存在')
+})
+
+test('“验效果/发出去”是没接入的门，不能说成“卡在”', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('LATER_GATES'), '需要区分未接入的门')
+  assert.ok(source.includes('第二版接入'), '必须说明是功能未接入而不是用户卡住')
+})
+
+test('时间戳不挂 aria-live（每 8 秒播报会变成噪音）', async () => {
+  const source = await read('client.js')
+  assert.ok(!/pc-time'?[^}]*aria-live/.test(source), '时间戳不得是 live region')
+  assert.ok(source.includes("className: 'pc-sr', role: 'status' }, '正在刷新'"), '加载态应由独立的 sr-only 区域播报')
+})
+
+test('账本枚举翻成中文，缺失值不显示成绿色 0', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('TASK_STATUS'))
+  assert.ok(source.includes('VERDICT'))
+  assert.ok(source.includes("h('td', { className: 'pc-muted' }, '—')"), 'null 必须显示为 —')
+  assert.ok(!source.includes('String(bugs.blocking == null ? 0'), '缺失值不得冒充 0')
+})
+
+test('主按钮文案承认它是两步中的第一步', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('去对话发送'), '文案必须与真实行为一致')
+  assert.ok(!source.includes('让 AI 执行下一步'), '不得承诺它没做的事')
+})
+
+test('发送痕迹用可订阅 store，markSent 后同一次挂载就能显示', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('sentStore'))
+  assert.ok(source.includes('useSent()'))
+  assert.ok(source.includes('sentStore.listeners'))
 })
 
 test('刷新失败时保留旧数据并给重试，不整页替换', async () => {

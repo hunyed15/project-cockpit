@@ -13,6 +13,11 @@ window.__ModuleLoader__.load({
     const REQUEST_TIMEOUT_MS = 10000
 
     const STATE_TEXT = { done: '已完成', current: '当前', pending: '未开始' }
+    const TASK_STATUS = { in_progress: '进行中', completed: '已完成', planning: '未开始', unknown: '未知' }
+    const VERDICT = { fix: '有需修复项', pass: '通过', fail: '未通过', 'gate-blocked': '门禁未过' }
+    // 第一版里这两道门恒为 pending：说"卡在"会让人以为是自己没做完，
+    // 实际是功能还没接入。
+    const LATER_GATES = new Set(['验效果', '发出去'])
 
     // 面板是 root scope，拿不到 session，也没有任何公开的「向会话注入用户消息」API
     // （Host 侧 commands.execute 只跑斜杠命令、不会把文本发给模型）。
@@ -37,6 +42,8 @@ window.__ModuleLoader__.load({
     let layout = null
 
     // 发送痕迹：只在本地记「什么时候点过发送」，不伪造账本状态。
+    // 用可订阅的模块级 store，否则 markSent 只写 localStorage，
+    // 同一次挂载内界面永远显示不出「上次发送」。
     const readSent = () => {
       try {
         return JSON.parse(window.localStorage.getItem(SENT_KEY) || '{}') || {}
@@ -44,15 +51,26 @@ window.__ModuleLoader__.load({
         return {}
       }
     }
+    const sentStore = { value: readSent(), listeners: new Set() }
     const markSent = (kind) => {
       if (!kind) return
       try {
-        const all = readSent()
-        all[kind] = new Date().toISOString()
+        const all = { ...sentStore.value, [kind]: new Date().toISOString() }
         window.localStorage.setItem(SENT_KEY, JSON.stringify(all))
+        sentStore.value = all
+        for (const listener of sentStore.listeners) listener()
       } catch {
         // 隐私模式/配额满：痕迹功能失效，但不影响发送
       }
+    }
+    const useSent = () => {
+      const [value, setValue] = React.useState(sentStore.value)
+      React.useEffect(() => {
+        const listener = () => setValue(sentStore.value)
+        sentStore.listeners.add(listener)
+        return () => sentStore.listeners.delete(listener)
+      }, [])
+      return value
     }
     const formatTime = (value) => {
       const date = value instanceof Date ? value : new Date(value)
@@ -72,6 +90,8 @@ h1.pc-name { margin:0; font-size:16px; font-weight:600; }
 .pc-chip { border:1px solid currentColor; border-radius:6px; padding:1px 8px; font-size:12px; font-weight:600; white-space:nowrap; }
 .pc-chip-bad { color:var(--dsw-alias-state-error-primary); }
 .pc-chip-ok { color:var(--dsw-alias-state-success-primary); }
+.pc-chip-unknown { color:var(--dsw-alias-label-secondary); border-style:dashed; }
+.pc-time { font-variant-numeric:tabular-nums; }
 .pc-spacer { flex:1 1 auto; }
 .pc-banner { max-width:1120px; margin:12px auto 0; padding:8px 14px; border-radius:8px; display:flex; gap:12px;
   align-items:flex-start; justify-content:space-between; flex-wrap:wrap; font-size:12px;
@@ -259,19 +279,25 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
     function TaskRow(props) {
       const task = props.task
       const bugs = task.bugs || {}
+      const blocking = bugs.blocking
+      const verdict = bugs.lastVerdict ? VERDICT[bugs.lastVerdict] || bugs.lastVerdict : ''
       return h(
         'tr',
         null,
         h('td', null, task.title || task.id),
-        h('td', null, task.status),
+        h('td', null, TASK_STATUS[task.status] || task.status),
         h('td', null, task.priority || '—'),
-        h('td', { className: bugs.blocking > 0 ? 'pc-bad' : 'pc-ok' }, String(bugs.blocking == null ? 0 : bugs.blocking)),
-        h('td', null, bugs.lastRound == null ? '—' : `#${bugs.lastRound} ${bugs.lastVerdict || ''}`),
+        // 读不到就当"未统计"（—），不能显示成绿色的 0：
+        // "账本里没问题"和"根本没读到账本"是两件事。
+        blocking == null
+          ? h('td', { className: 'pc-muted' }, '—')
+          : h('td', { className: blocking > 0 ? 'pc-bad' : 'pc-ok' }, String(blocking)),
+        h('td', null, bugs.lastRound == null ? '—' : `#${bugs.lastRound}${verdict ? ` ${verdict}` : ''}`),
       )
     }
 
     /**
-     * 对话输入框上方的常驻条：只有面板点过「让 AI 执行下一步」才出现。
+     * 对话输入框上方的常驻条：只有面板点过「去对话发送」才出现。
      * 这里才拿得到 inputActions（session scope），面板拿不到。
      */
     function NextActionDock(props) {
@@ -313,7 +339,7 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
       const { workspaces, selected, setSelected, model, error, loading, goodAt, refresh } = useCockpit()
       const [gatesOpen, setGatesOpen] = React.useState(false)
       const [copied, setCopied] = React.useState(false)
-      const [sent, setSent] = React.useState(() => readSent())
+      const sent = useSent()
 
       const copyInstruction = () => {
         if (!model) return
@@ -340,6 +366,27 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
       const current = model ? model.gates.find((gate) => gate.state === 'current') : null
       const lastSent = model && model.nextAction ? sent[model.nextAction.kind] : null
 
+      // 数据不完整时不能给绿色结论：warnings 说"数字可能偏低"、error 说"这是旧数据"，
+      // 而 chip 却显示"无阻塞"，就是首屏自相矛盾。
+      const degraded = Boolean(error) || (model && model.warnings && model.warnings.length > 0)
+      const chipClass = degraded
+        ? 'pc-chip pc-chip-unknown'
+        : blocking > 0
+          ? 'pc-chip pc-chip-bad'
+          : 'pc-chip pc-chip-ok'
+      const chipText = degraded
+        ? '状态待确认'
+        : blocking > 0
+          ? `待修 ${blocking}`
+          : '无待修问题'
+
+      // "验效果/发出去"第一版恒 pending：那是功能没接入，不是用户卡住了。
+      const gateSummary = !current
+        ? '七道门全部完成'
+        : LATER_GATES.has(current.name)
+          ? `下一阶段：${current.name}（第二版接入，当前不影响）`
+          : `卡在「${current.name}」：${current.basis}`
+
       const header = h(
         'header',
         { className: 'pc-head' },
@@ -347,13 +394,7 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
           'div',
           { className: 'pc-head-inner' },
           h('h1', { className: 'pc-name' }, model && model.project ? model.project.name : '项目'),
-          model
-            ? h(
-                'span',
-                { className: blocking > 0 ? 'pc-chip pc-chip-bad' : 'pc-chip pc-chip-ok', role: 'status' },
-                blocking > 0 ? `卡点 ${blocking}` : '无阻塞',
-              )
-            : null,
+          model ? h('span', { className: chipClass, role: 'status' }, chipText) : null,
           workspaces.length > 1
             ? h(
                 'select',
@@ -367,11 +408,11 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
               )
             : null,
           h('span', { className: 'pc-spacer' }),
-          h(
-            'span',
-            { className: 'pc-muted', 'aria-live': 'polite' },
-            loading ? '刷新中…' : model && model.generatedAt ? `更新于 ${formatTime(model.generatedAt)}` : '',
-          ),
+          // 时间戳不挂 aria-live：generatedAt 每 8 秒都变，会把读屏变成节拍器。
+          model && model.generatedAt
+            ? h('span', { className: 'pc-muted pc-time' }, `更新于 ${formatTime(model.generatedAt)}`)
+            : null,
+          loading ? h('span', { className: 'pc-sr', role: 'status' }, '正在刷新') : null,
           h(
             'button',
             { className: 'pc-btn', onClick: refresh, disabled: loading, 'aria-busy': loading ? 'true' : 'false' },
@@ -431,7 +472,7 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
             h(
               'div',
               { className: 'pc-action-row' },
-              h('button', { className: 'pc-btn pc-btn-primary', onClick: sendToAgent }, '让 AI 执行下一步'),
+              h('button', { className: 'pc-btn pc-btn-primary', onClick: sendToAgent }, '去对话发送'),
               h('button', { className: 'pc-btn', onClick: copyInstruction }, copied ? '已复制' : '复制指令'),
             ),
           ),
@@ -446,11 +487,7 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
               },
               '阶段门（推断，非声明）',
             ),
-            h(
-              'div',
-              { className: 'pc-gate-summary' },
-              current ? `卡在「${current.name}」：${current.basis}` : '七道门全部完成',
-            ),
+            h('div', { className: 'pc-gate-summary' }, gateSummary),
             h(
               'div',
               { className: 'pc-progress', 'aria-hidden': 'true' },
@@ -488,7 +525,7 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
                     h('th', { scope: 'col' }, '任务'),
                     h('th', { scope: 'col' }, '状态'),
                     h('th', { scope: 'col' }, '优先级'),
-                    h('th', { scope: 'col' }, 'blocking'),
+                    h('th', { scope: 'col' }, '待修'),
                     h('th', { scope: 'col' }, '最近轮次'),
                   ),
                 ),
