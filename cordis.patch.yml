@@ -1,0 +1,4 @@
+- insert:
+    - id: project-cockpit
+      name: '@hunyed15/project-cockpit'
+      config: {}
