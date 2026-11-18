@@ -4,6 +4,21 @@
   "description": "Project cockpit for DeepSeek Harness: read-only project progress (where we are, what blocks, next step) with one action that drives the agent.",
   "license": "MIT",
   "author": "hunyed15",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hunyed15/dsh-project-cockpit.git"
+  },
+  "homepage": "https://github.com/hunyed15/dsh-project-cockpit#readme",
+  "bugs": {
+    "url": "https://github.com/hunyed15/dsh-project-cockpit/issues"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "project-dashboard",
+    "trellis",
+    "code-review"
+  ],
   "type": "module",
   "exports": {
     ".": "./index.js",
@@ -18,6 +33,7 @@
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg",
+    "docs/DETAIL.md",
     "README.md",
     "LICENSE"
   ],

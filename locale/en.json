@@ -1,6 +1,7 @@
 {
   "meta": {
     "title": "Project cockpit",
-    "description": "Read-only project progress: where you are, what blocks you, and the next step. Data comes from trellis tasks and the review ledger; phase gates are inferred and show their basis."
+    "description": "Read-only project progress: where you are, what blocks you, and the next step. Data comes from trellis tasks and the review ledger; phase gates are inferred and show their basis.",
+    "detail": "docs/DETAIL.md"
   }
 }
