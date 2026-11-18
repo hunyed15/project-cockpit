@@ -1627,6 +1627,16 @@ git tag v0.1.0
 
 ## 执行变更记录
 
+**2026-11-18（评审后补次要观察）**：`impeccable critique` 报 20/40，P0+P1 修完后补剩余项：
+
+- 卡片标题去掉 `text-transform:uppercase`（对中文空转），改用左侧 2px 竖条建立层级；
+- 表格包进 `.pc-table-wrap { overflow-x:auto }`，窄屏横向滚动不拖走 sticky 头；列宽改为首列 `width:100%` + 其余 `nowrap`；
+- `warnings` 超过 3 条时显示"还有 N 处未显示"；
+- 真正实现设计文档 §8 承诺的 `truncated`：任务 > 200 时列表切到 200 并置位，**但 `totals` 与阶段门仍按全量任务计算**（先算后切），界面明确提示；
+- 修 `lib/route.js` 的 403 分支（工作区服务抛 ENOENT 时回 403，不冒充 500 故障）；
+- 修 `lib/gates.js` 里"prd.md 存在"的措辞（实际是按 spec 文件数近似），并加测试守住；
+- 测试 54 → 72。
+
 **2026-11-18（执行 Task 8，探针改变了方案）**：原计划让 `POST /api/action` 由 Host 投递指令。探针结论：DSH 0.2.2-rc.3 没有向活跃会话注入用户消息的公开 API（`commands.execute` 只跑斜杠命令、不发给模型；`subagents.sendMessage` 是父子会话语义；`agents` 只暴露 `{id}`）。因此：
 
 - **取消** `POST /project-cockpit/api/action` 与 `lib/action.js`；

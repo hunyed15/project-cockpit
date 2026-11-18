@@ -137,3 +137,23 @@ test('响应不泄漏内部账本路径', () => {
   assert.ok(!flat.includes('secret'))
   assert.ok(!flat.includes('ledgerDir'))
 })
+
+test('任务超过 200 个时截断并标 truncated', () => {
+  const many = Array.from({ length: 260 }, (_, index) => task(`t${index}`))
+  const model = buildPanelModel(evidence({ tasks: many }))
+  assert.equal(model.tasks.length, 200)
+  assert.equal(model.truncated, true)
+})
+
+test('截断只压列表，卡点数与阶段门仍按全部任务算', () => {
+  const many = Array.from({ length: 260 }, (_, index) => task(`t${index}`))
+  const model = buildPanelModel(evidence({ tasks: many }))
+  // 每个任务 1 个未处置 important → 全部 260 个都应计入 totals
+  assert.equal(model.totals.blocking, 260)
+  assert.equal(model.totals.rounds, 260)
+})
+
+test('任务未超限时 truncated 为 false', () => {
+  const model = buildPanelModel(evidence())
+  assert.equal(model.truncated, false)
+})

@@ -132,3 +132,27 @@ test('发送后留痕：本地记录发送时间用于区分"没做"与"做完�
   assert.ok(source.includes('markSent('))
   assert.ok(source.includes('上次发送'))
 })
+
+test('warnings 超过 3 条要说明还有多少未显示', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('处未显示'), '截断后必须告知剩余数量')
+})
+
+test('表格放在自己的横向滚动容器里，窄屏不拖走整页', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('pc-table-wrap'), '缺少横向滚动容器')
+  assert.ok(/\.pc-table-wrap\s*\{[^}]*overflow-x\s*:\s*auto/.test(source), '容器必须 overflow-x:auto')
+})
+
+test('卡片标题不用 uppercase 空转（中文无大小写）', async () => {
+  const source = await read('client.js')
+  const match = source.match(/h2\.pc-card-title\s*\{[^}]*\}/)
+  assert.ok(match, '缺少卡片标题样式')
+  assert.ok(!/text-transform\s*:\s*uppercase/.test(match[0]), '卡片标题不得再用 uppercase')
+})
+
+test('截断任务时给出明确提示，不让人以为看到的就是全部', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('model.truncated'))
+  assert.ok(source.includes('只显示前 200 个'))
+})

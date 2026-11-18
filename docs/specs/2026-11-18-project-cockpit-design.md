@@ -210,7 +210,8 @@ Host 插件（bundle row）
 - 路由只接受 `workspaceRegistry` 里登记过的项目路径，其余 403；不接受相对路径、不接受 `file://`。
 - 项目未初始化：200 + `trellis.initialized=false` + 空任务表 + `nextAction.kind="init"`（**不是** 500）。
 - 账本损坏：跳过坏行，`warnings[]` 带回行号；面板顶部显示"数据有 N 处异常"。
-- 超过 200 个任务或单文件 > 2 MiB：截断并在响应里标 `truncated`。
+- 超过 200 个任务：任务表只返回前 200 个并置 `truncated: true`；**卡点数与阶段门仍按全部任务计算**（先全量计数再切片），界面上明确提示"只显示前 200 个"。
+- 单文件 > 2 MiB：读取时截断并写 `warnings[]`，不静默当完整数据。
 - `POST /api/action`：缺参 400、指令 > 2000 字符 413、投递异常 500；非 POST 405。
 
 ## 9. 测试

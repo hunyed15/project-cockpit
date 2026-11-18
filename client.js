@@ -93,6 +93,7 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
 .pc-gate-name { font-weight:600; }
 .pc-gate-state { font-size:11px; color:var(--dsw-alias-label-secondary); }
 .pc-gate-basis { font-size:12px; color:var(--dsw-alias-label-secondary); line-height:1.45; }
+.pc-table-wrap { overflow-x:auto; }
 .pc-table { width:100%; border-collapse:collapse; }
 .pc-table caption { text-align:left; }
 .pc-table th { text-align:left; font-weight:600; font-size:12px; color:var(--dsw-alias-label-secondary);
@@ -407,8 +408,16 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
                 h(
                   'span',
                   null,
-                  `数据有 ${model.warnings.length} 处异常，下面的数字可能偏低：${model.warnings.slice(0, 3).join('；')}`,
+                  `数据有 ${model.warnings.length} 处异常，下面的数字可能偏低：${model.warnings.slice(0, 3).join('；')}` +
+                    (model.warnings.length > 3 ? `（还有 ${model.warnings.length - 3} 处未显示）` : ''),
                 ),
+              )
+            : null,
+          model.truncated
+            ? h(
+                'section',
+                { className: 'pc-banner', role: 'status' },
+                h('span', null, '任务过多，只显示前 200 个；卡点数与阶段门仍按全部任务计算。'),
               )
             : null,
           h(
@@ -462,29 +471,34 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
             'section',
             { className: 'pc-card' },
             h('h2', { className: 'pc-card-title' }, '任务'),
+            // 窄屏时让表格自己横向滚动，而不是把整页（连同 sticky 头）拖走
             h(
-              'table',
-              { className: 'pc-table' },
-              h('caption', { className: 'pc-sr' }, '项目任务与审核状态'),
+              'div',
+              { className: 'pc-table-wrap' },
               h(
-                'thead',
-                null,
+                'table',
+                { className: 'pc-table' },
+                h('caption', { className: 'pc-sr' }, '项目任务与审核状态'),
                 h(
-                  'tr',
+                  'thead',
                   null,
-                  h('th', { scope: 'col' }, '任务'),
-                  h('th', { scope: 'col' }, '状态'),
-                  h('th', { scope: 'col' }, '优先级'),
-                  h('th', { scope: 'col' }, 'blocking'),
-                  h('th', { scope: 'col' }, '最近轮次'),
+                  h(
+                    'tr',
+                    null,
+                    h('th', { scope: 'col' }, '任务'),
+                    h('th', { scope: 'col' }, '状态'),
+                    h('th', { scope: 'col' }, '优先级'),
+                    h('th', { scope: 'col' }, 'blocking'),
+                    h('th', { scope: 'col' }, '最近轮次'),
+                  ),
                 ),
-              ),
-              h(
-                'tbody',
-                null,
-                model.tasks.length === 0
-                  ? h('tr', null, h('td', { colSpan: 5, className: 'pc-muted' }, '还没有任务'))
-                  : model.tasks.map((task) => h(TaskRow, { key: task.id, task })),
+                h(
+                  'tbody',
+                  null,
+                  model.tasks.length === 0
+                    ? h('tr', null, h('td', { colSpan: 5, className: 'pc-muted' }, '还没有任务'))
+                    : model.tasks.map((task) => h(TaskRow, { key: task.id, task })),
+                ),
               ),
             ),
           ),
