@@ -55,21 +55,28 @@
 
 ```
 Client（root scope 整页）
-  └─ fetch GET /project-cockpit/api/panel?workspacePath=<abs>
+  ├─ fetch GET /project-cockpit/api/workspaces   （已注册工作区列表，供切换）
+  └─ fetch GET /project-cockpit/api/panel?path=<workspace 绝对路径>
         │
 Host 插件（bundle row）
-  ├─ webServer.register：只读路由，peer 授权，路径白名单校验
+  ├─ webServer.register：只读路由；path 必须命中 workspaceRegistry，否则 403
   ├─ projectReader：解析 task.json / 审核账本 / trellis 环境
   ├─ gateDeriver：证据 → 阶段门（标注推断）
   ├─ nextAction：状态机 → 唯一动作 + 一句指令
   └─ dispatcher：把指令送进目标会话（见 §7）
 ```
 
+**为什么走 `workspaceRegistry` 而不是信任前端传路径**：`main` 是 root scope，拿不到 Session，前端只能从“已注册工作区”里选；Host 用 `ctx.workspaceRegistry.resolveByPath(path)` 校验后再读，等价于“只允许读 DSH 自己登记过的项目”，比 `sessionId` 解析更宽松但同样不可越权。
+
 ### 4.1 Host 组件
 
-- `index.js`：`export function apply(ctx, config)`；`export const Config` 暴露 `panelRoute`（默认 `/project-cockpit`）等少量配置。
-- `panel.js`：纯函数模块（无 I/O），导出 `buildPanelModel(files)`、`deriveGates(...)`、`nextAction(...)`，便于单测。
-- `reader.js`：唯一碰盘的地方；只接受绝对项目根，内部拼固定相对路径。
+- `index.js`：`export function apply(ctx)`；`export const inject = ['webServer']`；只做服务解析与路由挂载。
+- `lib/route.js`：HTTP 层（`createRoutes`），不碰盘、不解析业务，便于测试。
+- `lib/reader.js`：唯一碰盘的地方；只接受绝对项目根，内部拼固定相对路径。
+- `lib/count.js`：bug 计数口径（纯函数）。
+- `lib/gates.js`：阶段门推导（纯函数）。
+- `lib/next-action.js`：唯一下一步状态机（纯函数）。
+- `lib/panel.js`：把上面三者组装成面板模型（纯函数，`generatedAt` 由调用方注入）。
 
 ### 4.2 Client 组件
 
@@ -80,12 +87,18 @@ Host 插件（bundle row）
 
 ### 5.1 路由
 
-`GET /project-cockpit/api/panel?workspacePath=<abs>`
+| 方法 | 路径 | 作用 |
+|---|---|---|
+| GET | `/project-cockpit/api/workspaces` | 已注册工作区 `[{id,title,path}]`，供面板切换项目 |
+| GET | `/project-cockpit/api/panel?path=<abs>` | 面板模型；`path` 省略时取第一个工作区 |
+| POST | `/project-cockpit/api/action` | 行动层（§7），body `{sessionId, instruction}` |
+
+`GET /panel` 响应：
 
 ```json
 {
   "project": { "path": "D:/Coding/foo", "name": "foo" },
-  "trellis": { "initialized": true, "version": "0.6.17", "source": "D:/Coding/foo/.trellis" },
+  "trellis": { "initialized": true, "version": "0.6.17", "specFiles": 10 },
   "tasks": [
     {
       "id": "00-bootstrap-guidelines",
@@ -93,24 +106,29 @@ Host 插件（bundle row）
       "status": "in_progress",
       "priority": "P1",
       "devType": "docs",
-      "subtasks": { "done": 0, "total": 0 },
       "completedAt": null,
-      "bugs": { "blocking": 2, "open": 3, "lastRound": 13, "lastVerdict": "fix", "lastAt": "2026-11-17T09:12:00+08:00" }
+      "subtasksDone": 0,
+      "subtasksTotal": 0,
+      "bugs": { "blocking": 2, "open": 3, "fixed": 1, "lastRound": 13, "lastVerdict": "fix", "lastAt": "2026-11-17T09:12:00+08:00" }
     }
   ],
   "gates": [
-    { "name": "想清楚", "state": "done", "basis": "prd.md 存在且非模板" },
-    { "name": "定规格", "state": "done", "basis": ".trellis/spec/ 有 12 个文件" },
-    { "name": "写代码", "state": "current", "basis": "task 状态 in_progress + 17 个 commit" },
-    { "name": "挑毛病", "state": "pending", "basis": "无审核轮次" }
+    { "name": "想清楚", "state": "done", "basis": "prd.md 存在" },
+    { "name": "定规格", "state": "done", "basis": ".trellis/spec 有 10 个文件" },
+    { "name": "搭骨架", "state": "done", "basis": "有 12 个实现文件" },
+    { "name": "写代码", "state": "done", "basis": "存在进行中/已完成的任务" },
+    { "name": "挑毛病", "state": "done", "basis": "账本有 17 个审核轮次" },
+    { "name": "验效果", "state": "current", "basis": "验收表未接入（第二版）" },
+    { "name": "发出去", "state": "pending", "basis": "发布记录未接入（第二版）" }
   ],
   "nextAction": {
     "kind": "fix-findings",
     "label": "修复并复检",
-    "instruction": "修完 review-13 的 2 个 important，然后跑 claude_review(mode:\"gate\") 复核。",
+    "instruction": "修完 review-13 的 2 个 blocking finding，用 claude_review_disposition 标记后，跑 claude_review(mode:\"gate\") 复核。",
     "reason": "存在 2 个未处置的 blocking finding"
   },
-  "generatedAt": "2026-11-18T18:20:00+08:00"
+  "warnings": [],
+  "generatedAt": "2026-11-18T10:00:00.000Z"
 }
 ```
 
@@ -137,11 +155,11 @@ Host 插件（bundle row）
 
 ## 6. 阶段门推导（推断，不是声明）
 
-| 阶段 | 判据 | 说明 |
+| 阶段 | 判据（第一版实现） | 说明 |
 |---|---|---|
-| 想清楚 | 存在 `prd.md` 且非模板内容 | 模板可用"Bootstrap Task"特征识别 |
+| 想清楚 | `.trellis/spec` 文件数 > 0（**近似**，第二版改为检测 `prd.md` 非模板） | 近似要在 `basis` 里说清楚 |
 | 定规格 | `.trellis/spec/**` 文件数 > 0 | 显示数量 |
-| 搭骨架 | 存在实现类文件（非 `.md`） | 用文件类型判定，不做语义判断 |
+| 搭骨架 | 存在实现文件（任务状态已建立） | 不做语义判断 |
 | 写代码 | 任务状态含 `in_progress` 或 `completed` | — |
 | 挑毛病 | 账本存在轮次 | 显示轮次数 |
 | 验效果 | 预留（第二版验收表） | 第一版恒 `pending` |
@@ -172,10 +190,11 @@ Host 插件（bundle row）
 
 ## 8. 错误处理
 
-- 路由只接受绝对路径，且必须命中 `.trellis` 或 `.dsh/claude-review`；否则 403 + 明示原因。
+- 路由只接受 `workspaceRegistry` 里登记过的项目路径，其余 403；不接受相对路径、不接受 `file://`。
 - 项目未初始化：200 + `trellis.initialized=false` + 空任务表 + `nextAction.kind="init"`（**不是** 500）。
 - 账本损坏：跳过坏行，`warnings[]` 带回行号；面板顶部显示"数据有 N 处异常"。
 - 超过 200 个任务或单文件 > 2 MiB：截断并在响应里标 `truncated`。
+- `POST /api/action`：缺参 400、指令 > 2000 字符 413、投递异常 500；非 POST 405。
 
 ## 9. 测试
 
