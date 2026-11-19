@@ -1,3 +1,8 @@
+> **⚠️ 已并入 [`@hunyed15/claude-code-review`](https://github.com/hunyed15/dsh-claude-code-review) v2.0.0**
+>
+> 本仓库不再单独维护。项目驾驶舱现在是审核插件的左侧栏「项目」整页，
+> 安装那一个插件即可（不要与本包同时安装，两者抢同一个面板 id `project-cockpit`）。
+> 本仓库保留作为历史与设计文档。
 # @hunyed15/project-cockpit
 
 > 源码：<https://github.com/hunyed15/project-cockpit>
