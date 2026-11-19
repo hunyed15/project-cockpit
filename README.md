@@ -75,10 +75,25 @@ node --test        # 54 个断言：计数口径、读取器、阶段门、下�
 
 ## 限制（第一版）
 
-- 默认项目取"工作区列表第一个"，多项目时需手动切换；没有记住上次选择。
 - 面板每 8 秒轮询一次，没有增量推送。
 - 验收页 / 设置页未实现（设计文档 §1.2 的非目标）。
 - 待发送指令只存在浏览器内存里，刷新页面即丢失（指令可随时从面板重新生成）。
+- 记住上次看的项目存在浏览器 localStorage；换机器或清缓存后会回到第一个工作区。
+
+## 开发：看不到界面时怎么办
+
+DSH 的 GUI 需要鉴权 token，agent 打不开它。`tools/preview/` 提供了本地预览 + 截图：
+
+```powershell
+npm --prefix tools/preview install
+node tools/preview/server.mjs                          # http://127.0.0.1:4711/
+node tools/preview/shot.mjs "http://127.0.0.1:4711/?scenario=blocking" 360 900 narrow.png full
+node tools/preview/shot.mjs "http://127.0.0.1:4711/?scenario=manytasks" 340 --measure
+```
+
+用真实 React + 真实 CSS 渲染 `client.js`，数据由本包 `lib/` 现算，支持 blocking / warnings /
+truncated / error / empty 等场景，并能在精确 CSS 宽度下量出横向溢出元素。
+细节与两个坑见 [tools/preview/README.md](tools/preview/README.md)。
 
 ## License
 

@@ -9,6 +9,7 @@ window.__ModuleLoader__.load({
     const PANEL_ID = 'project-cockpit'
     const API = '/project-cockpit/api'
     const SENT_KEY = 'project-cockpit:last-sent'
+    const LAST_PROJECT_KEY = 'project-cockpit:last-project'
     const POLL_MS = 8000
     const REQUEST_TIMEOUT_MS = 10000
 
@@ -93,6 +94,23 @@ window.__ModuleLoader__.load({
     const samePath = (left, right) => {
       const norm = (value) => String(value || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
       return norm(left) !== '' && norm(left) === norm(right)
+    }
+
+    // 记住上次看的项目：多项目用户每天打开都要重新选，是每天都在付的成本。
+    const readLastProject = () => {
+      try {
+        return window.localStorage.getItem(LAST_PROJECT_KEY) || ''
+      } catch {
+        return ''
+      }
+    }
+    const saveLastProject = (path) => {
+      if (!path) return
+      try {
+        window.localStorage.setItem(LAST_PROJECT_KEY, path)
+      } catch {
+        // 隐私模式：记住失败不影响使用
+      }
     }
 
     // 指令里混着中英文标识符（claude_review(mode:"gate")）。不区分字体会让人读串行、
@@ -282,7 +300,13 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
             if (!alive) return
             const items = Array.isArray(list) ? list : []
             setWorkspaces(items)
-            setSelected((prev) => prev || (items[0] ? items[0].path : ''))
+            setSelected((prev) => {
+              if (prev) return prev
+              // 上次看的项目还在列表里就回到它，否则退回第一个
+              const remembered = readLastProject()
+              const hit = items.find((item) => samePath(item.path, remembered))
+              return hit ? hit.path : items[0] ? items[0].path : ''
+            })
             if (items.length === 0) {
               // 空态不是故障：不该走 error 通道，也不该给一个必然失败的重试。
               setEmpty(true)
@@ -432,6 +456,7 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
       // 换项目就丢掉上一条待发送指令：否则可能把 A 项目的指令发到 B 项目。
       React.useEffect(() => {
         setPending(null)
+        saveLastProject(selected)
       }, [selected])
 
       const copyInstruction = () => {

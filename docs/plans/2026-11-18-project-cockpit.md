@@ -1627,6 +1627,27 @@ git tag v0.1.0
 
 ## 执行变更记录
 
+**2026-11-19（第一次真正"看见"界面：新增预览截图工具 + 修 5 个只有渲染才暴露的问题）**：
+
+背景：此前所有 UI 判断都基于读 CSS，没截过图。新增 `tools/preview/`（本地预览 + CDP 截图），
+第一次渲染后发现：
+
+- **阶段门与 chip 自相矛盾（逻辑 bug）**：`blocking=3` 时 chip 说「待修 3」，阶段门却说
+  「下一阶段：验效果」。根因是「挑毛病」门只看 `rounds > 0`，不看未处置 blocking。
+  改为 `rounds > 0 && blocking === 0`，`deriveGates` 增加 `blocking` 入参。
+- **进度线 pending 段几乎不可见**：track 用 `bg-layer-2` 太浅，改为 `border-l1`。
+- **窄屏横向溢出**：flex 子项默认 `min-width:auto`，`claude_review(mode:"gate")` 这类长标识符
+  把整页顶宽。加 `.pc-head-inner > * { min-width:0 }`、`h1` overflow-wrap、code 允许断行、
+  prose 改 `max-width:min(46em,100%)`。
+- **常驻条露出反引号**：dock 没走 `renderInstruction`，直接把 `` `claude_review_disposition` ``
+  原样显示。面板与 dock 现在共用同一渲染。
+- **错误码原样上屏**：`workspace-not-allowed` 翻成「这个工作区不在已登记列表里…」，原文放 title。
+- 顺带：warnings 改成列表（原来 4 条挤成一行）、窄屏隐藏次要列（`pc-col-secondary`）、
+  记住上次看的项目（localStorage，且不覆盖用户已选）、指令标识符等宽。
+
+**工具本身的坑（已写进 tools/preview/README）**：`chrome --screenshot` 在 125% DPI 上会缩放，
+布局正确也看着被裁；预览服务不发 `no-store` 会缓存旧 `client.js`。
+
 **2026-11-18（critique #2：20 → 24，修新的 P0/P1 + 回归）**：
 
 - **P0 首屏矛盾**：chip 改三态（待修 N / 无待修问题 / 状态待确认），`warnings` 或 `error` 时不再给绿色结论；阶段门对 `验效果`/`发出去` 改口径为「下一阶段：…（第二版接入，当前不影响）」，只有前五门说"卡在"。

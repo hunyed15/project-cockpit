@@ -76,10 +76,7 @@ test('locale 文件含 meta.title 与 meta.description', async () => {
 
 test('工作区列表只拉一次，不覆盖用户选中的项目', async () => {
   const source = await read('client.js')
-  assert.ok(
-    source.includes('setSelected((prev) => prev ||'),
-    '必须保留用户已选项目，否则下拉切换会被打回第一个',
-  )
+  assert.ok(source.includes('if (prev) return prev'), '必须保留用户已选项目，否则下拉切换会被打回第一个')
 })
 
 test('面板请求有序号守卫与超时，避免旧响应覆盖新响应', async () => {
@@ -146,7 +143,7 @@ test('待发送指令带项目身份，换项目即清空', async () => {
   const source = await read('client.js')
   assert.ok(source.includes('projectPath:'), 'pending 必须带项目路径')
   assert.ok(source.includes('projectName:'), 'pending 必须带项目名')
-  assert.ok(source.includes('setPending(null)\n      }, [selected])'), '换项目必须清空 pending')
+  assert.ok(source.includes('setPending(null)\n        saveLastProject(selected)'), '换项目必须清空 pending 并记住项目')
 })
 
 test('常驻条可被聚焦并播报（跳转后焦点不落 body）', async () => {
@@ -231,6 +228,14 @@ test('flex 子项放开 min-width，长标识符不会顶宽整页', async () =>
   const source = await read('client.js')
   assert.ok(source.includes('.pc-head-inner > *'), '头部子项需要 min-width:0')
   assert.ok(/\.pc-head-inner > \*[^}]*min-width:0/.test(source))
+})
+
+test('记住上次看的项目，且不覆盖用户已选', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes("'project-cockpit:last-project'"))
+  assert.ok(source.includes('readLastProject()'), '初始化时要读回上次的项目')
+  assert.ok(source.includes('saveLastProject(selected)'), '切换后要写回')
+  assert.ok(source.includes('if (prev) return prev'), '已有选择时不能被列表覆盖')
 })
 
 test('刷新失败时保留旧数据并给重试，不整页替换', async () => {
