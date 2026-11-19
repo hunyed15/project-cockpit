@@ -95,14 +95,42 @@ window.__ModuleLoader__.load({
       return norm(left) !== '' && norm(left) === norm(right)
     }
 
+    // 指令里混着中英文标识符（claude_review(mode:"gate")）。不区分字体会让人读串行、
+    // 抄错命令，所以把反引号段渲染成等宽。
+    function renderInstruction(text) {
+      const parts = String(text ?? '').split('`')
+      return parts.map((part, index) =>
+        index % 2 === 1 ? h('code', { key: index, className: 'pc-code' }, part) : part,
+      )
+    }
+
+    // 后端错误码对用户没有意义；翻成人话，原文留在 title 里供排查。
+    const ERROR_TEXT = {
+      'workspace-not-allowed': '这个工作区不在已登记列表里，切一个项目或重新注册工作区。',
+      'no-workspace': '还没有登记任何工作区，先在某个目录里打开一个会话。',
+      'method-not-allowed': '请求方式不被支持。',
+    }
+    function explainError(raw) {
+      const message = String(raw ?? '')
+      for (const [code, text] of Object.entries(ERROR_TEXT)) {
+        if (message.includes(code)) return text
+      }
+      if (/请求超时/.test(message)) return '请求超时，检查 DSH 是否还在运行。'
+      if (/不是 JSON/.test(message)) return message
+      if (/Failed to fetch|NetworkError/i.test(message)) return '连接不上 DSH，确认它还在运行。'
+      return message
+    }
+
     const CSS = `
 .pc-root { height:100%; overflow:auto; color:var(--dsw-alias-label-primary); background:var(--dsw-alias-bg-base);
   font-family:ui-sans-serif,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; font-size:13px; line-height:1.55; }
 .pc-sr { position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
 .pc-head { position:sticky; top:0; z-index:2; background:var(--dsw-alias-bg-base); border-bottom:1px solid var(--dsw-alias-border-l1); }
 .pc-head-inner { max-width:1120px; margin:0 auto; padding:14px 24px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+/* flex 子项默认 min-width:auto，长标识符会把整页顶宽；这里逐项放开收缩 */
+.pc-head-inner > *, .pc-dock > *, .pc-action-row > * { min-width:0; }
 .pc-body { max-width:1120px; margin:0 auto; padding:16px 24px 32px; display:flex; flex-direction:column; gap:12px; }
-h1.pc-name { margin:0; font-size:16px; font-weight:600; }
+h1.pc-name { margin:0; font-size:16px; font-weight:600; overflow-wrap:anywhere; }
 .pc-muted { color:var(--dsw-alias-label-secondary); }
 .pc-chip { border:1px solid currentColor; border-radius:6px; padding:1px 8px; font-size:12px; font-weight:600; white-space:nowrap; }
 .pc-chip-bad { color:var(--dsw-alias-state-error-primary); }
@@ -110,6 +138,8 @@ h1.pc-name { margin:0; font-size:16px; font-weight:600; }
 .pc-chip-unknown { color:var(--dsw-alias-label-secondary); border-style:dashed; }
 .pc-time { font-variant-numeric:tabular-nums; }
 .pc-banner-inline { margin:0; max-width:none; }
+.pc-banner-stack { flex-direction:column; align-items:stretch; gap:4px; }
+.pc-banner-list { margin:0; padding-left:20px; display:flex; flex-direction:column; gap:2px; }
 .pc-meta { font-size:12px; margin-top:10px; }
 .pc-spacer { flex:1 1 auto; }
 .pc-banner { max-width:1120px; margin:12px auto 0; padding:8px 14px; border-radius:8px; display:flex; gap:12px;
@@ -120,12 +150,15 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
   padding-left:8px; border-left:2px solid var(--dsw-alias-border-l2); line-height:1.4; }
 .pc-action-label { font-size:16px; font-weight:600; color:var(--dsw-alias-brand-primary); }
 .pc-action-text { margin:6px 0 4px; white-space:pre-wrap; overflow-wrap:anywhere; }
+.pc-action-text code, .pc-code { font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;
+  font-size:12px; background:var(--dsw-alias-bg-layer-2); border-radius:4px; padding:1px 4px;
+  overflow-wrap:anywhere; word-break:break-word; }
 /* 中文舒适行长约 40 字；1120px 容器下 13px 会有 80 字/行，扫读两次才读完 */
-.pc-action-text, .pc-gate-summary, .pc-gate-basis, .pc-dock-main > div { max-width:46em; }
+.pc-action-text, .pc-gate-summary, .pc-gate-basis, .pc-dock-main > div { max-width:min(46em, 100%); }
 .pc-action-row { display:flex; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap; }
 .pc-gate-summary { font-size:14px; font-weight:600; margin-bottom:10px; }
 .pc-progress { display:flex; gap:4px; margin:0 0 8px; }
-.pc-seg { flex:1 1 0; height:6px; border-radius:999px; background:var(--dsw-alias-bg-layer-2); }
+.pc-seg { flex:1 1 0; height:6px; border-radius:999px; background:var(--dsw-alias-border-l1); }
 .pc-seg-done { background:var(--dsw-alias-state-success-primary); }
 .pc-seg-current { background:var(--dsw-alias-state-warn-primary); }
 .pc-gate-list { display:flex; flex-direction:column; gap:6px; margin:8px 0 0; padding:0; list-style:none; }
@@ -155,7 +188,7 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
   font-size:12px; padding:2px 4px; font-family:inherit; }
 .pc-btn:focus-visible, .pc-btn-link:focus-visible, .pc-select:focus-visible { outline:2px solid var(--dsw-alias-brand-primary); outline-offset:2px; }
 .pc-select { border:1px solid var(--dsw-alias-border-l2); background:var(--dsw-alias-bg-layer-2); color:inherit;
-  border-radius:6px; padding:4px 8px; font-size:12px; font-family:inherit; max-width:100%; }
+  border-radius:6px; padding:4px 8px; font-size:12px; font-family:inherit; max-width:100%; flex:0 1 auto; }
 .pc-dock { max-width:1120px; margin:0 auto 8px; border:1px solid var(--dsw-alias-border-l2); border-radius:10px;
   background:var(--dsw-alias-bg-layer-1); padding:10px 14px; display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap; }
 .pc-dock-main { flex:1 1 320px; min-width:0; }
@@ -163,6 +196,10 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
 .pc-dock-actions { display:flex; gap:8px; flex-wrap:wrap; }
 @media (max-width:640px) {
   .pc-head-inner, .pc-body { padding-left:14px; padding-right:14px; }
+}
+/* 窄窗口下先收掉次要列，别让用户以为表格被截断了 */
+@media (max-width:560px) {
+  .pc-col-secondary { display:none; }
 }
 `
 
@@ -314,13 +351,17 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
         null,
         h('td', null, task.title || task.id),
         h('td', null, TASK_STATUS[task.status] || task.status),
-        h('td', null, task.priority || '—'),
+        h('td', { className: 'pc-col-secondary' }, task.priority || '—'),
         // 读不到就当"未统计"（—），不能显示成绿色的 0：
         // "账本里没问题"和"根本没读到账本"是两件事。
         blocking == null
           ? h('td', { className: 'pc-muted' }, '—')
           : h('td', { className: blocking > 0 ? 'pc-bad' : 'pc-ok' }, String(blocking)),
-        h('td', null, bugs.lastRound == null ? '—' : `#${bugs.lastRound}${verdict ? ` ${verdict}` : ''}`),
+        h(
+          'td',
+          { className: 'pc-col-secondary' },
+          bugs.lastRound == null ? '—' : `#${bugs.lastRound}${verdict ? ` ${verdict}` : ''}`,
+        ),
       )
     }
 
@@ -365,7 +406,7 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
           'div',
           { className: 'pc-dock-main' },
           h('div', { className: 'pc-dock-label' }, `项目驾驶舱 · ${where ? `${where} · ` : ''}${value.label}`),
-          h('div', null, value.instruction),
+          h('div', { className: 'pc-action-text' }, renderInstruction(value.instruction)),
           h('div', { className: 'pc-muted' }, value.reason),
         ),
         h(
@@ -502,10 +543,10 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
             { className: 'pc-banner', role: 'status', 'aria-live': 'polite' },
             h(
               'span',
-              null,
+              { title: error },
               model && goodAt
-                ? `刷新失败，下面是 ${formatTime(goodAt)} 的数据：${error}`
-                : `读取面板失败：${error}`,
+                ? `刷新失败，下面是 ${formatTime(goodAt)} 的数据：${explainError(error)}`
+                : `读取面板失败：${explainError(error)}`,
             ),
             h('button', { className: 'pc-btn', onClick: refresh, disabled: loading }, '重试'),
           )
@@ -526,12 +567,15 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
           model.warnings && model.warnings.length > 0
             ? h(
                 'section',
-                { className: 'pc-banner pc-banner-inline', role: 'status' },
+                { className: 'pc-banner pc-banner-inline pc-banner-stack', role: 'status' },
+                h('div', null, `数据有 ${model.warnings.length} 处异常，下面的数字可能偏低：`),
                 h(
-                  'span',
-                  null,
-                  `数据有 ${model.warnings.length} 处异常，下面的数字可能偏低：${model.warnings.slice(0, 3).join('；')}` +
-                    (model.warnings.length > 3 ? `（还有 ${model.warnings.length - 3} 处未显示）` : ''),
+                  'ul',
+                  { className: 'pc-banner-list' },
+                  model.warnings.slice(0, 3).map((line, index) => h('li', { key: index }, line)),
+                  model.warnings.length > 3
+                    ? h('li', { key: 'more', className: 'pc-muted' }, `还有 ${model.warnings.length - 3} 处未显示`)
+                    : null,
                 ),
               )
             : null,
@@ -551,7 +595,7 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
             { className: 'pc-card' },
             h('h2', { className: 'pc-card-title' }, '下一步'),
             h('div', { className: 'pc-action-label' }, model.nextAction.label),
-            h('div', { className: 'pc-action-text' }, model.nextAction.instruction),
+            h('div', { className: 'pc-action-text' }, renderInstruction(model.nextAction.instruction)),
             h('div', { className: 'pc-muted pc-action-text' }, model.nextAction.reason),
             lastSent
               ? h(
@@ -619,9 +663,9 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
                     null,
                     h('th', { scope: 'col' }, '任务'),
                     h('th', { scope: 'col' }, '状态'),
-                    h('th', { scope: 'col' }, '优先级'),
+                    h('th', { scope: 'col', className: 'pc-col-secondary' }, '优先级'),
                     h('th', { scope: 'col' }, '待修'),
-                    h('th', { scope: 'col' }, '最近轮次'),
+                    h('th', { scope: 'col', className: 'pc-col-secondary' }, '最近轮次'),
                   ),
                 ),
                 h(

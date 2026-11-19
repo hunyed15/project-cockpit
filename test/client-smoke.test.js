@@ -200,12 +200,37 @@ test('复制失败必须说出来，不能静默', async () => {
 
 test('正文行长收窄，表格保持全宽', async () => {
   const source = await read('client.js')
-  assert.ok(source.includes('max-width:46em'))
+  assert.ok(source.includes('max-width:min(46em, 100%)'), 'prose 收窄但不得在窄屏超出容器')
 })
 
 test('更新区域带 aria-busy，而不是只在按钮上', async () => {
   const source = await read('client.js')
-  assert.ok(source.includes("'aria-busy': loading ? 'true' : 'false' },") || source.includes("className: 'pc-body', 'aria-busy'"))
+  assert.ok(source.includes("className: 'pc-body', 'aria-busy'"), '更新区域必须带 aria-busy')
+})
+
+test('面板与常驻条都用等宽渲染指令里的标识符', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('renderInstruction(model.nextAction.instruction)'), '面板要渲染等宽')
+  assert.ok(source.includes('renderInstruction(value.instruction)'), '常驻条也要渲染等宽，否则反引号会露出来')
+})
+
+test('窄屏收掉次要列而不是把表格截断', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('.pc-col-secondary'), '需要次要列标记')
+  assert.ok(/@media \(max-width:560px\)[\s\S]{0,120}\.pc-col-secondary\s*\{\s*display:none/.test(source))
+})
+
+test('后端错误码翻成人话，原文留在 title 里', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('explainError'))
+  assert.ok(source.includes('workspace-not-allowed'))
+  assert.ok(source.includes('这个工作区不在已登记列表里'))
+})
+
+test('flex 子项放开 min-width，长标识符不会顶宽整页', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('.pc-head-inner > *'), '头部子项需要 min-width:0')
+  assert.ok(/\.pc-head-inner > \*[^}]*min-width:0/.test(source))
 })
 
 test('刷新失败时保留旧数据并给重试，不整页替换', async () => {

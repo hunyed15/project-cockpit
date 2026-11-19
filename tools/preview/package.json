@@ -1,0 +1,13 @@
+{
+  "name": "@hunyed15/project-cockpit-preview",
+  "private": true,
+  "description": "Local preview harness: renders client.js with real React and the package's own lib, then screenshots it over CDP at exact CSS widths.",
+  "type": "module",
+  "scripts": {
+    "serve": "node server.mjs"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  }
+}

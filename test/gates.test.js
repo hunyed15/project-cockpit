@@ -53,3 +53,32 @@ test('“想清楚”的 basis 不能断言 prd.md 存在（第一版只是近�
   assert.ok(!gates[0].basis.includes('prd.md 存在'), `basis 不得断言 prd 存在：${gates[0].basis}`)
   assert.ok(gates[0].basis.includes('近似'), '必须标明是近似判断')
 })
+
+test('还有未处置 blocking 时“挑毛病”不算完成', () => {
+  const gates = deriveGates({
+    hasPrd: true,
+    specFiles: 2,
+    codeFiles: 1,
+    hasActiveTask: true,
+    rounds: 12,
+    blocking: 3,
+  })
+  assert.equal(gates[4].name, '挑毛病')
+  assert.equal(gates[4].state, 'current', '有未处置 blocking 时必须卡在挑毛病')
+  assert.ok(gates[4].basis.includes('3'), '依据里要写清还有几个')
+  assert.equal(gates[5].state, 'pending', '不能越过挑毛病进入验效果')
+  assert.equal(gates.filter((g) => g.state === 'current').length, 1)
+})
+
+test('blocking 清零后“挑毛病”才变 done', () => {
+  const gates = deriveGates({
+    hasPrd: true,
+    specFiles: 2,
+    codeFiles: 1,
+    hasActiveTask: true,
+    rounds: 12,
+    blocking: 0,
+  })
+  assert.equal(gates[4].state, 'done')
+  assert.equal(gates[5].state, 'current')
+})
