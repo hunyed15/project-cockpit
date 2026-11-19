@@ -1,104 +1,85 @@
-> **⚠️ 已并入 [`@hunyed15/claude-code-review`](https://github.com/hunyed15/dsh-claude-code-review) v2.0.0**
+> **⚠️ 已归档：本项目已并入 [`@hunyed15/claude-code-review`](https://github.com/hunyed15/dsh-claude-code-review) v2.0.0**
 >
-> 本仓库不再单独维护。项目驾驶舱现在是审核插件的左侧栏「项目」整页，
-> 安装那一个插件即可（不要与本包同时安装，两者抢同一个面板 id `project-cockpit`）。
-> 本仓库保留作为历史与设计文档。
-# @hunyed15/project-cockpit
+> 项目驾驶舱现在是审核插件的左侧栏「项目」整页。**请安装那一个插件**，不要与本包同时安装
+> （两者注册同一个面板 id `project-cockpit`，会互相顶掉）。
+>
+> 本仓库不再更新，保留作为设计文档与决策记录。
 
-> 源码：<https://github.com/hunyed15/project-cockpit>
+# @hunyed15/project-cockpit（已归档）
 
-DSH 插件：在左侧栏加一个**项目驾驶舱**整页，只读回答三个问题——**到哪了 / 卡在哪 / 下一步做什么**，并把"下一步"一键交给当前会话里的 AI 去执行。
+一个 DSH 插件：左侧栏一个整页，只读回答三个问题——**到哪了 / 卡在哪 / 下一步做什么**，
+并把"下一步"交给当前会话里的 AI 执行。
 
-## 它是什么 / 不是什么
+> 版本停在 `v0.1.0`。代码与测试已合并进上游，见下方"代码去哪了"。
 
-- **是**：一个 Cordis Host 插件（bundle）+ 一个 Web 客户端半。安装后当前 profile 多一个左侧栏入口和一张整页，数据全部只读。
-- **不是**：不写任何项目文件，不修改审核账本，不做验收自动化，不画甘特图。
-- **和 `@hunyed15/claude-code-review` 的关系**：只**读**它写的账本（`review/*.json`、`dispositions.jsonl`），不依赖它的代码，也不改它。"代码这轮有没有问题"归它；"项目整体到哪了"归这里。
+## 它当时要解决什么
 
-## 安装
+`claude-code-review` 回答的是"这一轮代码有没有问题"。但每天打开 DSH 时真正要回答的是另外三个问题：
 
-只通过 GitHub 分发（没有发布到 npm）。
+1. 项目到哪了？
+2. 卡在哪？
+3. 下一步做什么？
 
-```powershell
-plugin_manager(action: "install_bundle", target: "git+https://github.com/hunyed15/project-cockpit.git")
-```
+看板能展示，但只有插件能**把"下一步"真的交给 AI**。这是它存在的唯一理由。
 
-固定版本：`git+https://github.com/hunyed15/project-cockpit.git#v0.1.0`。
+## 为什么先拆开，后来又合并
 
-也可以 `git clone` 后用 **Plugins → Add plugin** 选目录，或直接 `install_bundle` 传本地路径。
+**当初拆（2026-11-18）**的理由写在 [设计文档 §2](docs/specs/2026-11-18-project-cockpit-design.md)：
 
-> 链接安装的 bundle 名是 `@local/<目录名>`；从链接安装切到 git 安装前先 `remove_bundle`，否则两个 bundle 抢同一个面板 id `project-cockpit`。
+- 审核插件是 v1.2.0 已发布的商品，290 个断言围绕审核契约；
+- 面板要频繁改配色/布局，不该拖着提交门禁一起发布；
+- 两者依赖不同（审核要 ACP 两包 + PowerShell 引擎，驾驶舱零依赖）。
 
-## 数据从哪来（全部只读）
+**后来并（2026-11-19，v2.0.0）**是使用者的直接要求：*"功能合并到一个插件中，不要安装很多插件。"*
 
-| 数据 | 来源 | 口径 |
-|---|---|---|
-| 任务状态、优先级、子任务、完成时间 | `<project>/.trellis/tasks/*/task.json` | 精确字段，直接读 |
-| 待处置 bug、最近轮次 | 每个任务自己的账本 `.trellis/tasks/<task>/review/`，或本地账本 `.dsh/claude-review/ledger/review/` | 见下 |
-| 环境 | `.trellis/.version`、`.trellis/spec/**` | 只做"在/不在/数量" |
-| 阶段门 | 由上面三项**推断** | 每道门都显示依据，不隐藏 |
+合并时接受了这些代价，并做了对应处理：
 
-**多任务各算各的账本**：每个任务读自己的 `review/`，不会把 A 的 bug 记到 B 头上；`totals` 是任务间求和。
+| 代价 | 处理 |
+|---|---|
+| 依赖污染（驾驶舱用户被迫装 ACP 两包） | 无法避免，已在发布说明里写明 |
+| 故障面变大 | `index.js` 里驾驶舱路由**独立 try/catch**；`client.js` 里驾驶舱包进 IIFE，注册失败不连累协同面板与 `claude_review` |
+| 门禁版本与 UI 版本绑定 | 明确接受；引擎未变（`# claude-review-api: 3`），被审仓库的 `tools/claude-review/` 与 pre-commit hook 不受影响 |
+| 面板 id 冲突 | 从 profile 移除旧包，并在两处 README/Release 写明"不要两个都装" |
 
-**bug 口径（必须与审核插件一致）**：
+## 代码去哪了
 
-- `failOn` 取该轮 `review-N.json` 的 `meta.failOn`，缺失时回退 `critical/important`；
-- 处置必须 `round` 匹配（跨轮处置不算），优先按 `key`、无 `key` 时按问题在 `issues` 里的原始下标；
-- `fixed` / `deferred` / `counter-evidence` 视为已处置；`blocking` = 该级别未处置数，`open` = 未处置 + 已 fixed 待复检。
+| 本仓库 | 上游位置（`claude-code-review`） |
+|---|---|
+| `lib/*.js`（6 个纯模块） | `lib/cockpit/*.js` |
+| `client.js`（整页 + 通栏） | `client.js` 里的 `const PC = (() => { … })()` 段 |
+| `index.js`（`/project-cockpit` 路由） | `index.js` 的 `registerCockpitRoute()` |
+| `test/*.test.js` | `test/cockpit-*.test.js` |
+| `tools/preview/` | 原样迁入 |
+| `locale/*.json` | 并入上游的标题与描述 |
 
-**阶段门是推断，不是声明**：`想清楚 / 定规格 / 搭骨架 / 写代码 / 挑毛病` 五道由证据推出（prd 存在、spec 文件数、任务状态、账本轮次），`验效果 / 发出去` 留到第二版，第一版恒 `pending`。每道门都带一行 `basis` 说明依据，界面上原样显示。
+## 保留在这里的东西
 
-## 下一步与行动层
+- [设计文档](docs/specs/2026-11-18-project-cockpit-design.md) — 目的、非目标、落地位置（带源码行号证据）、数据契约、阶段门推导、行动层探针结论、风险表
+- [实现计划](docs/plans/2026-11-18-project-cockpit.md) — TDD 九步任务 + **四轮执行变更记录**（包含每次为什么偏离原计划）
+- [插件详情页文案](docs/DETAIL.md) — 功能、用法、限制
+- [v0.1.0 发布说明](docs/RELEASE-v0.1.0.md)
+- `.impeccable/critique/` — 三轮 `impeccable critique` 快照（20 → 24 → 22 / 40），第三轮起有真实截图证据
 
-面板按状态机给出**唯一**动作：
+## 三条值得留下的经验
 
-| 条件 | 动作 | 指令 |
-|---|---|---|
-| 有未处置 blocking | 修复并复检 | 修完 N 个 blocking，标记处置后跑 `claude_review(mode:"gate")` |
-| 有已修待复检 | 复检本轮修复 | 用 `claude_review(mode:"range")` 复检 |
-| 从没审过 | 跑第一次审核 | `claude_review(mode:"full")` |
-| 全绿 | 跑提交门禁 | `claude_review(mode:"gate")` |
-| 没有 `.trellis` | 初始化 | 提示先建 trellis 项目 |
+1. **fixtures 必须来自真实样本。**
+   单测用自造的 `{ meta, issues }` 形状，全绿；真实报告却是 `{ meta, review: { issues } }`——
+   于是**真实账本上 `blocking` 恒为 0**，面板永远说"无待修问题"。这个 bug 靠读代码和跑自造测试都发现不了，是拿真实 `review-1.json` 跑一遍才暴露的。
 
-点「让 AI 执行下一步」→ 跳回对话，输入框上方出现通栏，右侧三个按钮：**发送** / **填入输入框** / **忽略**。
+2. **看不到渲染就等于没验过 UI。**
+   这个插件有 5 个 bug 是截图才发现的：CSS 声明顺序导致页内横幅缩成居中窄条、`[hidden]` 被 `display:flex` 覆盖导致折叠失效、首列改成 `th` 后 `td + td` 失配把"进行中"挤成竖排、常驻条露出反引号、窄屏整页横向溢出。
+   DSH GUI 需要鉴权 token，agent 打不开——所以做了 `tools/preview/`（真实 React + 真实 CSS + CDP 精确视口截图），这套工具已经进上游。
 
-> 为什么是两步：DSH 0.2.2-rc.3 **没有**向活跃会话注入用户消息的公开 API（`commands.execute` 只执行斜杠命令、不发给模型；`subagents.sendMessage` 是父子会话语义）。所以行动层走浏览器侧已验证的 `inputActions.setDraft()` + `submit()`——代价是多一次点击，好处是走的就是**用户自己的发送通道**，你能看见将要发出去的原文。
+3. **"读到的不完整"不能翻译成"你没问题"。**
+   降级要整屏一致：chip、下一步卡、主按钮、阶段门、表格数字必须一起降级。只改其中一处，首屏就会自相矛盾——绿色「无待修问题」配一句「卡在验效果」。
 
-## 平台与权限边界
-
-- 需要 DSH `>=0.2.2-rc.3 <0.3.0`（`engines.dsh`，不满足时 `install_bundle` 拒绝）。
-- 只有 Web profile 有意义：`export const inject = ['webServer']`，没有 Web 的行保持 inactive。
-- 面板是 **root scope**，拿不到会话；项目来自**已注册工作区**，路由只接受 `workspaceRegistry` 里登记过的路径，其余 403——本机任何进程都无法让面板去读任意目录。
-- **鉴权边界（重要）**：插件路由是用 `webServer.register({ kind: 'prefix' })` 注册的，**不受 DSH Web 的令牌闸门保护**——未登录的 `GET /` 会返回 401，但同进程的 `GET /project-cockpit/api/panel` 返回 200。它只在 `127.0.0.1` 上监听，读的也只是已登记工作区的 trellis 元数据（任务标题、审核结论），不返回文件内容、不提供写操作。**不要把这个端口的地址暴露到局域网或公网。**
-- 只读：路由只有 `GET`（`POST` 会被 405 拒），不写项目文件、不写缓存。
-
-## 自测
-
-```powershell
-node --test        # 54 个断言：计数口径、读取器、阶段门、下一步、模型、路由、客户端 smoke
-```
-
-## 限制（第一版）
-
-- 面板每 8 秒轮询一次，没有增量推送。
-- 验收页 / 设置页未实现（设计文档 §1.2 的非目标）。
-- 待发送指令只存在浏览器内存里，刷新页面即丢失（指令可随时从面板重新生成）。
-- 记住上次看的项目存在浏览器 localStorage；换机器或清缓存后会回到第一个工作区。
-
-## 开发：看不到界面时怎么办
-
-DSH 的 GUI 需要鉴权 token，agent 打不开它。`tools/preview/` 提供了本地预览 + 截图：
+## 现在怎么装
 
 ```powershell
-npm --prefix tools/preview install
-node tools/preview/server.mjs                          # http://127.0.0.1:4711/
-node tools/preview/shot.mjs "http://127.0.0.1:4711/?scenario=blocking" 360 900 narrow.png full
-node tools/preview/shot.mjs "http://127.0.0.1:4711/?scenario=manytasks" 340 --measure
+plugin_manager(action: "install_bundle", target: "git+https://github.com/hunyed15/dsh-claude-code-review.git#v2.0.0")
 ```
 
-用真实 React + 真实 CSS 渲染 `client.js`，数据由本包 `lib/` 现算，支持 blocking / warnings /
-truncated / error / empty 等场景，并能在精确 CSS 宽度下量出横向溢出元素。
-细节与两个坑见 [tools/preview/README.md](tools/preview/README.md)。
+需要 DSH `>=0.2.2-rc.3 <0.3.0`、Claude Code CLI（鉴权）、PowerShell 7。
 
 ## License
 
