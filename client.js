@@ -191,6 +191,8 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
 .pc-seg { flex:1 1 0; height:6px; border-radius:999px; background:var(--dsw-alias-border-l1); }
 /* 第二版才接入的门：虚线表示"还没轮到"，与"没做"的实心浅灰区分 */
 .pc-seg-later { background:transparent; border:1px dashed var(--dsw-alias-border-l2); box-sizing:border-box; }
+/* 数据不可信时的"当前阶段"：虚线 + 警告色，表示这个位置本身没把握 */
+.pc-seg-unknown { background:transparent; border:1px dashed var(--dsw-alias-state-warn-primary); box-sizing:border-box; }
 .pc-seg-done { background:var(--dsw-alias-state-success-primary); }
 .pc-seg-current { background:var(--dsw-alias-state-warn-primary); }
 .pc-gate-list { display:flex; flex-direction:column; gap:6px; margin:8px 0 0; padding:0; list-style:none; }
@@ -211,7 +213,8 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
 .pc-table th.pc-row-head { text-align:left; font-weight:400; font-size:13px; color:inherit;
   padding:8px; border-bottom:1px solid var(--dsw-alias-border-l1); overflow-wrap:anywhere; }
 .pc-table th:first-child, .pc-table td:first-child { width:100%; overflow-wrap:anywhere; }
-.pc-table th + th, .pc-table td + td { white-space:nowrap; }
+/* 首列现在是 th，用 td + td 会漏掉 th 后面那个单元格（"进行中"会被挤成竖排） */
+.pc-table tr > *:not(:first-child) { white-space:nowrap; }
 .pc-bad { color:var(--dsw-alias-state-error-primary); font-weight:600; }
 .pc-ok { color:var(--dsw-alias-state-success-primary); }
 .pc-btn { border:1px solid var(--dsw-alias-border-l2); background:transparent; color:var(--dsw-alias-label-primary);
@@ -394,7 +397,11 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
               'aria-current': gate.state === 'current' ? 'step' : undefined,
             },
             h('span', { className: 'pc-gate-name' }, gate.name),
-            h('span', { className: 'pc-gate-state' }, STATE_TEXT[gate.state] || gate.state),
+            h(
+              'span',
+              { className: 'pc-gate-state' },
+              props.degraded && gate.state === 'current' ? '待确认' : STATE_TEXT[gate.state] || gate.state,
+            ),
             h('span', { className: 'pc-gate-basis' }, gate.basis),
           ),
         ),
@@ -577,11 +584,15 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
           : '无待修问题'
 
       // "验效果/发出去"第一版恒 pending：那是功能没接入，不是用户卡住了。
-      const gateSummary = !current
-        ? '七道门全部完成'
-        : LATER_GATES.has(current.name)
-          ? `下一阶段：${current.name}（第二版接入，当前不影响）`
-          : `卡在「${current.name}」：${current.basis}`
+      // 数据不可信时阶段门也不可信：账本异常会让 rounds/blocking 偏低，
+      // "卡在挑毛病"可能只是没读到 —— 不能当结论说。
+      const gateSummary = degraded
+        ? `阶段门待确认：数据有 ${(model && model.warnings && model.warnings.length) || 0} 处异常，先修数据再判断走到哪一步`
+        : !current
+          ? '七道门全部完成'
+          : LATER_GATES.has(current.name)
+            ? `下一阶段：${current.name}（第二版接入，当前不影响）`
+            : `卡在「${current.name}」：${current.basis}`
 
       // 切换项目的瞬间，下拉已经是新项目、数据还是旧的：标题跟下拉走，
       // 并用一条横幅说明"下面是上一个项目的数据"，不让人误读。
@@ -762,7 +773,7 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
                 h('span', {
                   key: gate.name,
                   // "第二版才接入"的门在视觉上要区别于"还没做"
-                  className: `pc-seg pc-seg-${LATER_GATES.has(gate.name) && gate.state !== 'done' ? 'later' : gate.state}`,
+                  className: `pc-seg pc-seg-${degraded && gate.state === 'current' ? 'unknown' : LATER_GATES.has(gate.name) && gate.state !== 'done' ? 'later' : gate.state}`,
                   title: LATER_GATES.has(gate.name) ? `${gate.name}：第二版接入` : gate.name,
                 }),
               ),
@@ -777,7 +788,7 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
               },
               gatesOpen ? '收起七道门的依据' : '展开七道门的依据',
             ),
-            h(GateList, { gates, hidden: !gatesOpen }),
+            h(GateList, { gates, hidden: !gatesOpen, degraded }),
             // 环境元数据放到可见位置：塞进 h2 的 title 里只有鼠标悬停能拿到。
             h(
               'div',

@@ -288,7 +288,7 @@ test('inflight 用请求序号而非布尔，旧请求不会清掉新请求的�
 test('折叠时 aria-controls 指向的元素仍然存在（hidden 而非卸载）', async () => {
   const source = await read('client.js')
   assert.ok(source.includes('hidden: props.hidden ? true : undefined'), '用 hidden 隐藏，不卸载')
-  assert.ok(source.includes('h(GateList, { gates, hidden: !gatesOpen })'), '始终挂载 GateList')
+  assert.ok(source.includes('h(GateList, { gates, hidden: !gatesOpen, degraded })'), '始终挂载 GateList（并带上降级信息）')
   assert.ok(source.includes("role: 'list'"), 'list-style:none 会丢列表语义，需显式补回')
 })
 
@@ -300,6 +300,8 @@ test('[hidden] 不会被 display:flex 覆盖（作者样式优先于 UA 样式�
 test('表格首列是行表头 th scope=row，不是普通单元格', async () => {
   const source = await read('client.js')
   assert.ok(source.includes("h('th', { scope: 'row', className: 'pc-row-head' }"), '任务名应为行表头')
+  // 首列改成 th 后，td + td 会漏掉紧随其后的单元格
+  assert.ok(source.includes('.pc-table tr > *:not(:first-child) { white-space:nowrap; }'), 'nowrap 要覆盖 th 后面的单元格')
 })
 
 test('“第二版才接入”的门在进度条上与“没做”区分开', async () => {
@@ -317,6 +319,14 @@ test('错误文案不再指向页面上不存在的项目切换器', async () =>
 test('复制失败态会自行复位，不会永久停在失败', async () => {
   const source = await read('client.js')
   assert.ok(/const fail = \(\) => \{[\s\S]{0,200}?setCopyState\('idle'\)/.test(source), '失败态也要有定时复位')
+})
+
+test('数据不可信时阶段门也给"待确认"，不与卡点数说法打架', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('阶段门待确认'), '需要降级文案')
+  assert.ok(source.includes("props.degraded && gate.state === 'current' ? '待确认'"), '当前门的状态文字要降级')
+  assert.ok(source.includes('pc-seg-unknown'), '进度条当前段要换成待确认样式')
+  assert.ok(source.includes('h(GateList, { gates, hidden: !gatesOpen, degraded })'), 'GateList 要拿到 degraded')
 })
 
 test('nextAction 缺字段时逐项兜底，不落到 ErrorBoundary', async () => {
