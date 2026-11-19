@@ -125,7 +125,7 @@ window.__ModuleLoader__.load({
 
     // 后端错误码对用户没有意义；翻成人话，原文留在 title 里供排查。
     const ERROR_TEXT = {
-      'workspace-not-allowed': '这个工作区不在已登记列表里，切一个项目或重新注册工作区。',
+      'workspace-not-allowed': '这个工作区不在已登记列表里。在另一个项目目录里打开会话后回到这里，或点重试。',
       'no-workspace': '还没有登记任何工作区，先在某个目录里打开一个会话。',
       'method-not-allowed': '请求方式不被支持。',
     }
@@ -158,7 +158,7 @@ h1.pc-name { margin:0; font-size:16px; font-weight:600; overflow-wrap:anywhere; 
 .pc-time { font-variant-numeric:tabular-nums; }
 .pc-banner-stack { flex-direction:column; align-items:stretch; gap:4px; }
 .pc-banner-list { margin:0; padding-left:20px; display:flex; flex-direction:column; gap:2px; }
-.pc-meta { font-size:12px; margin-top:10px; }
+.pc-meta { font-size:11px; margin-top:10px; }
 .pc-spacer { flex:1 1 auto; }
 .pc-banner { max-width:1120px; margin:12px auto 0; padding:8px 14px; border-radius:8px; display:flex; gap:12px;
   align-items:flex-start; justify-content:space-between; flex-wrap:wrap; font-size:12px;
@@ -189,9 +189,13 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
 .pc-gate-summary { font-size:14px; font-weight:600; margin-bottom:10px; }
 .pc-progress { display:flex; gap:4px; margin:0 0 8px; }
 .pc-seg { flex:1 1 0; height:6px; border-radius:999px; background:var(--dsw-alias-border-l1); }
+/* 第二版才接入的门：虚线表示"还没轮到"，与"没做"的实心浅灰区分 */
+.pc-seg-later { background:transparent; border:1px dashed var(--dsw-alias-border-l2); box-sizing:border-box; }
 .pc-seg-done { background:var(--dsw-alias-state-success-primary); }
 .pc-seg-current { background:var(--dsw-alias-state-warn-primary); }
 .pc-gate-list { display:flex; flex-direction:column; gap:6px; margin:8px 0 0; padding:0; list-style:none; }
+/* 作者样式 display:flex 会盖掉 [hidden] 的 UA display:none，必须显式处理 */
+.pc-gate-list[hidden] { display:none; }
 .pc-gate { display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; padding:6px 8px; border-radius:6px; }
 .pc-gate-current { background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 10%, transparent); }
 .pc-gate-name { font-weight:600; }
@@ -203,6 +207,9 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
 .pc-table th { text-align:left; font-weight:600; font-size:12px; color:var(--dsw-alias-label-secondary);
   padding:6px 8px; border-bottom:1px solid var(--dsw-alias-border-l1); white-space:nowrap; }
 .pc-table td { padding:8px; border-bottom:1px solid var(--dsw-alias-border-l1); }
+/* 首列现在是 th scope="row"：保留单元格外观，但带上行表头语义 */
+.pc-table th.pc-row-head { text-align:left; font-weight:400; font-size:13px; color:inherit;
+  padding:8px; border-bottom:1px solid var(--dsw-alias-border-l1); overflow-wrap:anywhere; }
 .pc-table th:first-child, .pc-table td:first-child { width:100%; overflow-wrap:anywhere; }
 .pc-table th + th, .pc-table td + td { white-space:nowrap; }
 .pc-bad { color:var(--dsw-alias-state-error-primary); font-weight:600; }
@@ -370,7 +377,14 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
       const gates = props.gates
       return h(
         'ol',
-        { className: 'pc-gate-list', id: 'pc-gate-details' },
+        {
+          className: 'pc-gate-list',
+          id: 'pc-gate-details',
+          // 折叠时用 hidden 而不是卸载：否则 aria-controls 指向不存在的元素。
+          hidden: props.hidden ? true : undefined,
+          // list-style:none 会让部分读屏丢掉列表语义，显式补回来。
+          role: 'list',
+        },
         gates.map((gate) =>
           h(
             'li',
@@ -397,7 +411,7 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
         return h(
           'tr',
           null,
-          h('td', null, task.title || task.id),
+          h('th', { scope: 'row', className: 'pc-row-head' }, task.title || task.id),
           h('td', null, TASK_STATUS[task.status] || task.status),
           h('td', { className: 'pc-col-secondary' }, task.priority || '—'),
           h('td', { className: 'pc-muted' }, '—'),
@@ -499,24 +513,30 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
       const copyInstruction = () => {
         if (!model) return
         const write = navigator.clipboard && navigator.clipboard.writeText
-        if (!write) {
+        // 失败态也要能回去，否则按钮会永久停在"复制失败"
+        const fail = () => {
           setCopyState('fail')
+          clearTimeout(copyTimer.current)
+          copyTimer.current = setTimeout(() => setCopyState('idle'), 4000)
+        }
+        if (!write) {
+          fail()
           return
         }
-        write.call(navigator.clipboard, model.nextAction.instruction).then(
+        write.call(navigator.clipboard, action.instruction).then(
           () => {
             setCopyState('done')
             clearTimeout(copyTimer.current)
             copyTimer.current = setTimeout(() => setCopyState('idle'), 1600)
           },
-          () => setCopyState('fail'),
+          fail,
         )
       }
 
       const sendToAgent = () => {
         if (!model) return
         setPending({
-          ...model.nextAction,
+          ...action,
           projectPath: model.project ? model.project.path : '',
           projectName: model.project ? model.project.name : '',
         })
@@ -526,8 +546,19 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
       const style = h('style', { key: 'pc-css' }, CSS)
       const totals = model && model.totals ? model.totals : null
       const blocking = totals ? totals.blocking : 0
-      const current = model ? model.gates.find((gate) => gate.state === 'current') : null
-      const lastSent = model && model.nextAction ? sent[model.nextAction.kind] : null
+      // 服务端少字段时不要落到 ErrorBoundary 白板：逐项兜底，页面还能显示"数据不完整"。
+      const gates = model && Array.isArray(model.gates) ? model.gates : []
+      const trellis = (model && model.trellis) || { initialized: false, version: null, specFiles: 0 }
+      const action =
+        (model && model.nextAction) || {
+          kind: 'unknown',
+          label: '暂无建议',
+          instruction: '',
+          reason: '服务端没有返回下一步，可能是插件版本不匹配。',
+        }
+      const current = gates.find((gate) => gate.state === 'current') || null
+      const lastSent = action.kind ? sent[action.kind] : null
+      const taskCount = totals && Number.isInteger(totals.taskCount) ? totals.taskCount : (model ? model.tasks.length : 0)
       const issueList =
         !error && totals && totals.blocking > 0 && Array.isArray(totals.issues) ? totals.issues : []
 
@@ -661,12 +692,12 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
             h('h2', { className: 'pc-card-title' }, degraded ? '下一步（待数据确认）' : '下一步'),
             // 降级时不能给"你可以提交"的结论和可点主按钮 ——
             // 那是把"我读不到"翻译成"你没问题"。
-            h('div', { className: 'pc-action-label' }, degraded ? '先确认数据' : model.nextAction.label),
-            h('div', { className: 'pc-action-text' }, renderInstruction(model.nextAction.instruction)),
+            h('div', { className: 'pc-action-label' }, degraded ? '先确认数据' : action.label),
+            h('div', { className: 'pc-action-text' }, renderInstruction(action.instruction)),
             h(
               'div',
               { className: 'pc-muted pc-action-text' },
-              degraded ? '（结论基于不完整账本，仅供排查，不要据此提交）' : model.nextAction.reason,
+              degraded ? '（结论基于不完整账本，仅供排查，不要据此提交）' : issueList.length > 0 ? null : action.reason,
             ),
             issueList.length > 0
               ? h(
@@ -727,7 +758,14 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
             h(
               'div',
               { className: 'pc-progress', 'aria-hidden': 'true' },
-              model.gates.map((gate) => h('span', { key: gate.name, className: `pc-seg pc-seg-${gate.state}` })),
+              gates.map((gate) =>
+                h('span', {
+                  key: gate.name,
+                  // "第二版才接入"的门在视觉上要区别于"还没做"
+                  className: `pc-seg pc-seg-${LATER_GATES.has(gate.name) && gate.state !== 'done' ? 'later' : gate.state}`,
+                  title: LATER_GATES.has(gate.name) ? `${gate.name}：第二版接入` : gate.name,
+                }),
+              ),
             ),
             h(
               'button',
@@ -739,12 +777,12 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
               },
               gatesOpen ? '收起七道门的依据' : '展开七道门的依据',
             ),
-            gatesOpen ? h(GateList, { gates: model.gates }) : null,
+            h(GateList, { gates, hidden: !gatesOpen }),
             // 环境元数据放到可见位置：塞进 h2 的 title 里只有鼠标悬停能拿到。
             h(
               'div',
               { className: 'pc-muted pc-meta' },
-              `trellis ${model.trellis.version || '未知'} · spec ${model.trellis.specFiles} 个文件 · ${model.tasks.length} 个任务`,
+              `trellis ${trellis.version || '未知'} · spec ${trellis.specFiles} 个文件 · ${taskCount} 个任务`,
             ),
           ),
           h(

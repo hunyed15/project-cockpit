@@ -60,7 +60,7 @@ test('注册对话常驻条作为行动层落点，并真的用 inputActions 发
 test('面板按钮先落槽位再跳回对话（面板是 root scope 拿不到 inputActions）', async () => {
   const source = await read('client.js')
   assert.ok(source.includes('setPending({'), '必须把动作放进槽位')
-  assert.ok(source.includes('...model.nextAction'), '槽位里要带完整动作信息')
+  assert.ok(source.includes('...action'), '槽位里要带完整动作信息')
   assert.ok(source.includes("selectPanel('conversation')"))
 })
 
@@ -208,7 +208,7 @@ test('更新区域带 aria-busy，而不是只在按钮上', async () => {
 
 test('面板与常驻条都用等宽渲染指令里的标识符', async () => {
   const source = await read('client.js')
-  assert.ok(source.includes('renderInstruction(model.nextAction.instruction)'), '面板要渲染等宽')
+  assert.ok(source.includes('renderInstruction(action.instruction)'), '面板要渲染等宽')
   assert.ok(source.includes('renderInstruction(value.instruction)'), '常驻条也要渲染等宽，否则反引号会露出来')
 })
 
@@ -283,6 +283,47 @@ test('inflight 用请求序号而非布尔，旧请求不会清掉新请求的�
   const source = await read('client.js')
   assert.ok(source.includes('inflight.current = mine'), '记录具体在飞的那一次')
   assert.ok(source.includes('if (inflight.current === mine) inflight.current = 0'), '只清自己那次')
+})
+
+test('折叠时 aria-controls 指向的元素仍然存在（hidden 而非卸载）', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('hidden: props.hidden ? true : undefined'), '用 hidden 隐藏，不卸载')
+  assert.ok(source.includes('h(GateList, { gates, hidden: !gatesOpen })'), '始终挂载 GateList')
+  assert.ok(source.includes("role: 'list'"), 'list-style:none 会丢列表语义，需显式补回')
+})
+
+test('[hidden] 不会被 display:flex 覆盖（作者样式优先于 UA 样式）', async () => {
+  const source = await read('client.js')
+  assert.ok(/\.pc-gate-list\[hidden\]\s*\{\s*display:\s*none/.test(source), 'hidden 时必须显式隐藏')
+})
+
+test('表格首列是行表头 th scope=row，不是普通单元格', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes("h('th', { scope: 'row', className: 'pc-row-head' }"), '任务名应为行表头')
+})
+
+test('“第二版才接入”的门在进度条上与“没做”区分开', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('pc-seg-later'), '需要独立样式')
+  assert.ok(source.includes('第二版接入'), 'hover 要有说明')
+})
+
+test('错误文案不再指向页面上不存在的项目切换器', async () => {
+  const source = await read('client.js')
+  assert.ok(!source.includes('切一个项目或重新注册工作区'), '单工作区时没有切换器，这条指引是死路')
+  assert.ok(source.includes('在另一个项目目录里打开会话'))
+})
+
+test('复制失败态会自行复位，不会永久停在失败', async () => {
+  const source = await read('client.js')
+  assert.ok(/const fail = \(\) => \{[\s\S]{0,200}?setCopyState\('idle'\)/.test(source), '失败态也要有定时复位')
+})
+
+test('nextAction 缺字段时逐项兜底，不落到 ErrorBoundary', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('const action ='), '需要兜底对象')
+  assert.ok(source.includes('暂无建议'), '要有可读降级文案')
+  assert.ok(source.includes('Array.isArray(model.gates)'), 'gates 也要兜底')
 })
 
 test('刷新失败时保留旧数据并给重试，不整页替换', async () => {

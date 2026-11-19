@@ -1703,3 +1703,18 @@ git tag v0.1.0
 - `buildPanelModel` 改为按任务计数 + `totals` 聚合（`lastRound` 取最大轮次），响应不含 `ledgerDir`；
 - 本地账本模式生成伪任务（读 `ledger/task.json`，缺文件用 `id=local`）；
 - 测试从 31 增至 35（新增多任务不串账本、伪任务、路径不泄漏）。
+
+**2026-11-19（清 P2/P3）**：
+
+- `aria-controls` 折叠时指向不存在元素 → GateList 始终挂载、用 `hidden` 隐藏，并补 `role="list"`
+  （`list-style:none` 会让部分读屏丢列表语义）；同时修 `.pc-gate-list[hidden]`——
+  作者样式 `display:flex` 会盖掉 UA 的 `display:none`，否则门会永远展开（截图发现）。
+- 表格首列改 `th scope="row"`（行表头），`.pc-row-head` 保持外观不变。
+- `totals.taskCount`（全量）替代元信息里的 `model.tasks.length`（截断后），数字不再不同源。
+- `nextAction` / `gates` / `trellis` 逐项兜底，缺字段时显示"暂无建议"而不是落 ErrorBoundary 白板。
+- 复制失败态 4 秒后自行复位（此前永久停在"复制失败"）。
+- 错误文案不再让人"切一个项目"（单工作区时根本没有切换器）。
+- 有 issues 列表时不再重复 reason 行；「验效果/发出去」两门在进度条上用虚线区分"第二版接入"。
+- `route.js` 的 405 分支加注释说明生产环境由 webServer 前置拦截（防御而非主路径）。
+- 测试 107 → 115。
+

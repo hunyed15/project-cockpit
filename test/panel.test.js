@@ -163,6 +163,13 @@ test('截断只压列表，卡点数与阶段门仍按全部任务算', () => {
   assert.equal(model.totals.rounds, 260)
 })
 
+test('totals.taskCount 是全量任务数，不是截断后的长度', () => {
+  const many = Array.from({ length: 260 }, (_, index) => task(`t${index}`))
+  const model = buildPanelModel(evidence({ tasks: many }))
+  assert.equal(model.tasks.length, 200, '列表被截断')
+  assert.equal(model.totals.taskCount, 260, '元信息要用全量')
+})
+
 test('任务未超限时 truncated 为 false', () => {
   const model = buildPanelModel(evidence())
   assert.equal(model.truncated, false)
