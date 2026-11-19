@@ -72,8 +72,17 @@ const harness = `(function () {
           var btn = document.querySelector('.pc-btn-primary')
           if (btn) { btn.click(); setTimeout(function () {
             var dock = document.querySelector('.pc-dock')
-            var send = dock && dock.querySelectorAll('.pc-btn')[0]
+            // dock 的主按钮现在是「填入输入框」；这里要验证真正发送那条路
+            var send = null
+            if (dock) {
+              var all = dock.querySelectorAll('.pc-btn')
+              for (var i = 0; i < all.length; i++) {
+                if (all[i].textContent.indexOf('发送') >= 0) { send = all[i]; break }
+              }
+            }
             if (send) send.click()
+            document.title = 'chain:' + (dock ? 'dock-visible' : 'dock-missing') +
+              (window.__harness.fakeInput.submitted ? ',submitted' : ',not-submitted')
           }, 1200) }
         }, 1500)
       }
@@ -99,7 +108,12 @@ async function loadModel() {
   const reader = await import(pathToFileURL(join(PKG, 'lib/reader.js')).href)
   const panel = await import(pathToFileURL(join(PKG, 'lib/panel.js')).href)
   const evidence = await reader.readEvidence(PROJECT)
-  return { model: panel.buildPanelModel(evidence), panel, reader }
+  return { model: panel.buildPanelModel(evidence), panel, reader, evidence }
+}
+
+async function loadEvidence() {
+  const reader = await import(pathToFileURL(join(PKG, 'lib/reader.js')).href)
+  return reader.readEvidence(PROJECT)
 }
 
 const server = createServer(async (req, res) => {
@@ -166,26 +180,41 @@ const server = createServer(async (req, res) => {
         model.taskLimit = 200
       }
       if (scenario === 'blocking') {
-        const gates = await import(pathToFileURL(join(PKG, 'lib/gates.js')).href)
-        const next = await import(pathToFileURL(join(PKG, 'lib/next-action.js')).href)
-        model.totals = { ...model.totals, blocking: 3, fixed: 1, open: 4, lastVerdict: 'fix' }
-        model.gates = gates.deriveGates({
-          hasPrd: true,
-          specFiles: model.trellis.specFiles,
-          codeFiles: 1,
-          hasActiveTask: true,
-          rounds: model.totals.rounds,
-          blocking: 3,
-        })
-        model.nextAction = next.nextAction({
-          initialized: true, blocking: 3, fixed: 1,
-          lastRound: model.totals.lastRound, lastVerdict: 'fix',
-        })
-        model.tasks = model.tasks.map((task) => ({
-          ...task,
+        // 用真实报告形状（issues 在 review 下）走生产代码路径，而不是手改 totals：
+        // 这样截图同时验证"issues 读对路径"和"卡在哪能给出内容"。
+        const realShape = {
+          meta: { task: 'demo', round: 12, failOn: ['critical', 'important'] },
+          review: {
+            summary: '',
+            strengths: [],
+            recommendations: [],
+            assessment: '',
+            verdict: 'fix',
+            issues: [
+              { severity: 'critical', file: 'lib/route.js', line: 42, issue: '工作区校验失败被吞成 500，403 分支不可达', why: '', fix: '', key: 'a1' },
+              { severity: 'important', file: 'client.js', line: 288, issue: '账本异常时仍给出可提交结论与主按钮', why: '', fix: '', key: 'b2' },
+              { severity: 'important', file: 'lib/count.js', line: 12, issue: 'issues 读错路径，真实账本上 blocking 恒为 0', why: '', fix: '', key: 'c3' },
+              { severity: 'minor', file: 'README.md', line: 8, issue: '安装命令版本号写法可再简', why: '', fix: '', key: 'd4' },
+            ],
+          },
+        }
+        const evidence = await loadEvidence()
+        evidence.tasks = [{
+          id: 'demo',
+          title: '演示任务',
           status: 'in_progress',
-          bugs: { ...task.bugs, blocking: 3, fixed: 1, open: 4, lastVerdict: 'fix' },
-        }))
+          priority: 'P1',
+          ledger: {
+            rounds: [{ round: 12, verdict: 'fix', mode: 'full', at: '2026-11-19T01:00:00Z' }],
+            dispositions: [],
+            latest: realShape,
+            warnings: [],
+          },
+        }]
+        const panel = await import(pathToFileURL(join(PKG, 'lib/panel.js')).href)
+        const built = panel.buildPanelModel(evidence)
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
+        return res.end(JSON.stringify(built))
       }
       if (scenario === 'manytasks') {
         const base = model.tasks[0] || { id: 'x', title: '任务', status: 'in_progress', priority: 'P1' }

@@ -1627,6 +1627,27 @@ git tag v0.1.0
 
 ## 执行变更记录
 
+**2026-11-19（critique #3：22/40，修 1 个数据正确性 bug + 2 个 P0/P1）**：
+
+- **数据正确性（最严重，评审之外的发现）**：真实报告形状是
+  `{ meta: { round, failOn }, review: { issues, verdict } }`，而 `lib/count.js` 读的是顶层
+  `report.issues` —— **真实账本上 blocking 恒为 0**，面板永远说"无待修问题"。
+  单测用的是自造形状，所以一直全绿。改为 `reportIssues()` 优先读 `review.issues`（兼容顶层），
+  测试 fixtures 全部换成真实形状。
+- **"卡在哪"给内容**：`summarizeBlocking()` 输出 severity / file:line / 标题，
+  `panel.js` 汇总到 `totals.issues`（最多 3 条），面板在「下一步」卡里列出来。
+- **P0 横幅 CSS 顺序 bug**：`.pc-banner-inline` 声明在 `.pc-banner` 之前、同权重被覆盖，
+  column flex 里 `margin: auto` 让页内横幅 shrink-to-fit 居中（实测 309px）。
+  改为 `.pc-banner.pc-banner-inline { margin:0; max-width:none; align-self:stretch }` 并移后。
+- **P1 降级仍给可提交结论**：degraded 时标题改「下一步（待数据确认）」、动作名改「先确认数据」、
+  理由改「不要据此提交」、主 CTA `disabled`、表格 blocking 渲染 `—`。
+- **P1 dock 覆盖草稿**：「填入输入框」升为主按钮，「发送」降为次按钮，并加一行
+  「两个按钮都会替换输入框里已有的内容。」
+- **P1 重试死按钮**：抽出 `loadWorkspaces()`，`refresh` 在无 selected 时重拉列表。
+- **P1 inflight 去重**：从布尔改为记录具体请求序号，旧请求不清理新请求的占用。
+- 顺带：错误横幅改 `role="alert"` + 红色变体；dock 外层 `role="region"`、live region 收窄到文本块。
+- 测试 95 → 107；预览 `blocking` 场景改为用真实形状报告走生产代码路径。
+
 **2026-11-19（第一次真正"看见"界面：新增预览截图工具 + 修 5 个只有渲染才暴露的问题）**：
 
 背景：此前所有 UI 判断都基于读 CSS，没截过图。新增 `tools/preview/`（本地预览 + CDP 截图），

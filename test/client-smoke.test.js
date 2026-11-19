@@ -150,7 +150,8 @@ test('常驻条可被聚焦并播报（跳转后焦点不落 body）', async () 
   const source = await read('client.js')
   assert.ok(source.includes('tabIndex: -1'))
   assert.ok(source.includes('boxRef.current.focus()'))
-  assert.ok(source.includes("role: 'status',"))
+  assert.ok(source.includes("role: 'region'"), '外层用 region 承载可访问名')
+  assert.ok(source.includes("className: 'pc-dock-main', role: 'status'"), 'live region 收窄到文本块')
 })
 
 test('空工作区是空态而不是故障：不给必然失败的重试', async () => {
@@ -236,6 +237,52 @@ test('记住上次看的项目，且不覆盖用户已选', async () => {
   assert.ok(source.includes('readLastProject()'), '初始化时要读回上次的项目')
   assert.ok(source.includes('saveLastProject(selected)'), '切换后要写回')
   assert.ok(source.includes('if (prev) return prev'), '已有选择时不能被列表覆盖')
+})
+
+test('页内横幅不被 .pc-banner 的居中 margin 覆盖（声明顺序 bug）', async () => {
+  const source = await read('client.js')
+  const bannerAt = source.indexOf('.pc-banner {')
+  const inlineAt = source.indexOf('.pc-banner.pc-banner-inline')
+  assert.ok(bannerAt > 0 && inlineAt > 0, '两条规则都要在')
+  assert.ok(inlineAt > bannerAt, '.pc-banner-inline 必须声明在 .pc-banner 之后')
+  assert.ok(/\.pc-banner\.pc-banner-inline\s*\{[^}]*align-self:stretch/.test(source), '要显式拉伸，避免 shrink-to-fit')
+})
+
+test('降级时禁用主 CTA，并把表格数字改成「—」', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes("disabled: degraded"), '主 CTA 必须在降级时禁用')
+  assert.ok(source.includes('先确认数据'), '标题要说明先确认数据')
+  assert.ok(source.includes('不要据此提交'), '理由要明确不要据此提交')
+  assert.ok(source.includes('props.degraded'), '表格行要感知降级')
+})
+
+test('「下一步」卡列出要修的那几条（severity + 标题 + 位置）', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('totals.issues'), '必须消费 issues')
+  assert.ok(source.includes('SEVERITY_TEXT'))
+  assert.ok(source.includes('pc-issue-meta'), '要显示 file:line')
+})
+
+test('dock 以「填入输入框」为主按钮，并说明会替换草稿', async () => {
+  const source = await read('client.js')
+  assert.ok(
+    /onClick: fill \}, '填入输入框'/.test(source.replace(/\s+/g, ' ')) || source.includes("onClick: fill }, '填入输入框'"),
+    '填入输入框应是主按钮',
+  )
+  assert.ok(source.includes('两个按钮都会替换输入框里已有的内容'), '必须说明会覆盖草稿')
+  assert.ok(!/"role: 'status',\s*\n\s*'aria-label': `项目驾驶舱下一步/.test(source), 'live region 不应包住按钮')
+})
+
+test('重试在列表失败时也能工作（不再依赖 selected）', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('loadWorkspaces'), '需要可重跑的列表加载')
+  assert.ok(source.includes('else loadWorkspaces()'), '没有选中项目时重试应重拉列表')
+})
+
+test('inflight 用请求序号而非布尔，旧请求不会清掉新请求的占用', async () => {
+  const source = await read('client.js')
+  assert.ok(source.includes('inflight.current = mine'), '记录具体在飞的那一次')
+  assert.ok(source.includes('if (inflight.current === mine) inflight.current = 0'), '只清自己那次')
 })
 
 test('刷新失败时保留旧数据并给重试，不整页替换', async () => {

@@ -16,6 +16,7 @@ window.__ModuleLoader__.load({
     const STATE_TEXT = { done: '已完成', current: '当前', pending: '未开始' }
     const TASK_STATUS = { in_progress: '进行中', completed: '已完成', planning: '未开始', unknown: '未知' }
     const VERDICT = { fix: '有需修复项', pass: '通过', fail: '未通过', 'gate-blocked': '门禁未过' }
+    const SEVERITY_TEXT = { critical: '严重', important: '重要', minor: '次要' }
     // 第一版里这两道门恒为 pending：说"卡在"会让人以为是自己没做完，
     // 实际是功能还没接入。
     const LATER_GATES = new Set(['验效果', '发出去'])
@@ -155,7 +156,6 @@ h1.pc-name { margin:0; font-size:16px; font-weight:600; overflow-wrap:anywhere; 
 .pc-chip-ok { color:var(--dsw-alias-state-success-primary); }
 .pc-chip-unknown { color:var(--dsw-alias-label-secondary); border-style:dashed; }
 .pc-time { font-variant-numeric:tabular-nums; }
-.pc-banner-inline { margin:0; max-width:none; }
 .pc-banner-stack { flex-direction:column; align-items:stretch; gap:4px; }
 .pc-banner-list { margin:0; padding-left:20px; display:flex; flex-direction:column; gap:2px; }
 .pc-meta { font-size:12px; margin-top:10px; }
@@ -163,6 +163,11 @@ h1.pc-name { margin:0; font-size:16px; font-weight:600; overflow-wrap:anywhere; 
 .pc-banner { max-width:1120px; margin:12px auto 0; padding:8px 14px; border-radius:8px; display:flex; gap:12px;
   align-items:flex-start; justify-content:space-between; flex-wrap:wrap; font-size:12px;
   border:1px solid var(--dsw-alias-state-warn-primary); color:var(--dsw-alias-state-warn-primary); }
+/* 必须在 .pc-banner 之后、且用双类提高权重：同权重时后面的 .pc-banner 会把
+   margin:auto 盖回来，在 column flex 里让页内横幅缩成居中窄条。 */
+.pc-banner.pc-banner-inline { margin:0; max-width:none; align-self:stretch; }
+.pc-banner.pc-banner-error { border-color:var(--dsw-alias-state-error-primary);
+  color:var(--dsw-alias-state-error-primary); }
 .pc-card { border:1px solid var(--dsw-alias-border-l1); border-radius:10px; background:var(--dsw-alias-bg-layer-1); padding:14px 16px; }
 h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(--dsw-alias-label-secondary);
   padding-left:8px; border-left:2px solid var(--dsw-alias-border-l2); line-height:1.4; }
@@ -174,6 +179,13 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
 /* 中文舒适行长约 40 字；1120px 容器下 13px 会有 80 字/行，扫读两次才读完 */
 .pc-action-text, .pc-gate-summary, .pc-gate-basis, .pc-dock-main > div { max-width:min(46em, 100%); }
 .pc-action-row { display:flex; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap; }
+.pc-issues { margin:10px 0 0; padding-left:18px; display:flex; flex-direction:column; gap:5px; }
+.pc-issue-title { overflow-wrap:anywhere; }
+.pc-issue-meta { font-size:11px; color:var(--dsw-alias-label-secondary);
+  font-family:ui-monospace,SFMono-Regular,Consolas,monospace; margin-left:6px; }
+.pc-issue-sev-critical { color:var(--dsw-alias-state-error-primary); font-weight:600; }
+.pc-issue-sev-important { color:var(--dsw-alias-state-warn-primary); font-weight:600; }
+.pc-blocked-hint { color:var(--dsw-alias-state-warn-primary); margin-top:8px; }
 .pc-gate-summary { font-size:14px; font-weight:600; margin-bottom:10px; }
 .pc-progress { display:flex; gap:4px; margin:0 0 8px; }
 .pc-seg { flex:1 1 0; height:6px; border-radius:999px; background:var(--dsw-alias-border-l1); }
@@ -212,6 +224,7 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
 .pc-dock-main { flex:1 1 320px; min-width:0; }
 .pc-dock-label { font-weight:600; color:var(--dsw-alias-brand-primary); }
 .pc-dock-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.pc-dock-hint { flex:0 0 100%; font-size:11px; margin-top:4px; }
 @media (max-width:640px) {
   .pc-head-inner, .pc-body { padding-left:14px; padding-right:14px; }
 }
@@ -268,60 +281,68 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
       const [goodAt, setGoodAt] = React.useState(null)
       const [empty, setEmpty] = React.useState(false)
       const seq = React.useRef(0)
-      const inflight = React.useRef(false)
+      // 记「哪一次请求在飞」，而不是布尔：旧请求被判废时不能把新请求的占用清掉。
+      const inflight = React.useRef(0)
 
       // 序号守卫：轮询与手动刷新并发时，旧响应不许覆盖新响应。
       // 另外跳过"已有请求在飞"的静默轮询，避免 8s 轮询周期 < 10s 超时时叠请求。
       const loadPanel = React.useCallback(async (path, silent) => {
-        if (silent && inflight.current) return
+        if (silent && inflight.current !== 0) return
         const mine = ++seq.current
-        inflight.current = true
+        inflight.current = mine
         if (!silent) setLoading(true)
         try {
           const next = await getJson(`${API}/panel${path ? `?path=${encodeURIComponent(path)}` : ''}`)
           if (mine !== seq.current) return
           setModel(next)
           setError('')
+          setEmpty(false)
           setGoodAt(Date.now())
         } catch (failure) {
           if (mine !== seq.current) return
           setError(String(failure && failure.message ? failure.message : failure))
         } finally {
-          inflight.current = false
+          if (inflight.current === mine) inflight.current = 0
           if (mine === seq.current) setLoading(false)
         }
       }, [])
 
-      // 列表只拉一次：绝不覆盖用户已经选中的项目。
-      React.useEffect(() => {
-        let alive = true
-        getJson(`${API}/workspaces`)
-          .then((list) => {
-            if (!alive) return
-            const items = Array.isArray(list) ? list : []
-            setWorkspaces(items)
-            setSelected((prev) => {
-              if (prev) return prev
-              // 上次看的项目还在列表里就回到它，否则退回第一个
-              const remembered = readLastProject()
-              const hit = items.find((item) => samePath(item.path, remembered))
-              return hit ? hit.path : items[0] ? items[0].path : ''
-            })
-            if (items.length === 0) {
-              // 空态不是故障：不该走 error 通道，也不该给一个必然失败的重试。
-              setEmpty(true)
-              setLoading(false)
-            }
+      // 拉工作区列表。以前只跑一次且失败后 selected 恒为空，
+      // 于是错误横幅里的「重试」按了没反应 —— 必须能重跑。
+      const loadWorkspaces = React.useCallback(async (alive) => {
+        try {
+          const list = await getJson(`${API}/workspaces`)
+          if (alive && !alive()) return
+          const items = Array.isArray(list) ? list : []
+          setWorkspaces(items)
+          setSelected((prev) => {
+            if (prev) return prev
+            // 上次看的项目还在列表里就回到它，否则退回第一个
+            const remembered = readLastProject()
+            const hit = items.find((item) => samePath(item.path, remembered))
+            return hit ? hit.path : items[0] ? items[0].path : ''
           })
-          .catch((failure) => {
-            if (!alive) return
-            setError(String(failure && failure.message ? failure.message : failure))
+          if (items.length === 0) {
+            // 空态不是故障：不该走 error 通道，也不该给一个必然失败的重试。
+            setEmpty(true)
             setLoading(false)
-          })
-        return () => {
-          alive = false
+          } else {
+            setError('')
+          }
+        } catch (failure) {
+          if (alive && !alive()) return
+          setError(String(failure && failure.message ? failure.message : failure))
+          setLoading(false)
         }
       }, [])
+
+      React.useEffect(() => {
+        let mounted = true
+        loadWorkspaces(() => mounted)
+        return () => {
+          mounted = false
+        }
+      }, [loadWorkspaces])
 
       // 面板与轮询只跟随选中的项目。
       React.useEffect(() => {
@@ -339,7 +360,8 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
 
       const refresh = React.useCallback(() => {
         if (selected) loadPanel(selected, false)
-      }, [loadPanel, selected])
+        else loadWorkspaces()
+      }, [loadPanel, loadWorkspaces, selected])
 
       return { workspaces, selected, setSelected, model, error, loading, goodAt, empty, refresh }
     }
@@ -370,6 +392,18 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
       const bugs = task.bugs || {}
       const blocking = bugs.blocking
       const verdict = bugs.lastVerdict ? VERDICT[bugs.lastVerdict] || bugs.lastVerdict : ''
+      // 数据不可信时不要显示绿色 0：那等于替统计结果背书。
+      if (props.degraded) {
+        return h(
+          'tr',
+          null,
+          h('td', null, task.title || task.id),
+          h('td', null, TASK_STATUS[task.status] || task.status),
+          h('td', { className: 'pc-col-secondary' }, task.priority || '—'),
+          h('td', { className: 'pc-muted' }, '—'),
+          h('td', { className: 'pc-col-secondary' }, bugs.lastRound == null ? '—' : `#${bugs.lastRound}`),
+        )
+      }
       return h(
         'tr',
         null,
@@ -423,12 +457,13 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
           className: 'pc-dock',
           ref: boxRef,
           tabIndex: -1,
-          role: 'status',
+          // live region 里不要包按钮：部分读屏会把整段连按钮一起播报或漏掉按钮。
+          role: 'region',
           'aria-label': `项目驾驶舱下一步${where ? `（${where}）` : ''}`,
         },
         h(
           'div',
-          { className: 'pc-dock-main' },
+          { className: 'pc-dock-main', role: 'status' },
           h('div', { className: 'pc-dock-label' }, `项目驾驶舱 · ${where ? `${where} · ` : ''}${value.label}`),
           h('div', { className: 'pc-action-text' }, renderInstruction(value.instruction)),
           h('div', { className: 'pc-muted' }, value.reason),
@@ -436,10 +471,12 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
         h(
           'div',
           { className: 'pc-dock-actions' },
-          h('button', { className: 'pc-btn pc-btn-primary', onClick: send }, '发送'),
-          h('button', { className: 'pc-btn', onClick: fill }, '填入输入框'),
+          // 「填入输入框」是主按钮：先让人看见、自己按回车，比直接覆盖草稿并发送安全。
+          h('button', { className: 'pc-btn pc-btn-primary', onClick: fill }, '填入输入框'),
+          h('button', { className: 'pc-btn', onClick: send }, '发送'),
           h('button', { className: 'pc-btn', onClick: () => setPending(null) }, '忽略'),
         ),
+        h('div', { className: 'pc-muted pc-dock-hint' }, '两个按钮都会替换输入框里已有的内容。'),
       )
     }
 
@@ -491,6 +528,8 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
       const blocking = totals ? totals.blocking : 0
       const current = model ? model.gates.find((gate) => gate.state === 'current') : null
       const lastSent = model && model.nextAction ? sent[model.nextAction.kind] : null
+      const issueList =
+        !error && totals && totals.blocking > 0 && Array.isArray(totals.issues) ? totals.issues : []
 
       // 数据不完整时不能给绿色结论：warnings 说"数字可能偏低"、error 说"这是旧数据"，
       // 而 chip 却显示"无阻塞"，就是首屏自相矛盾。
@@ -562,10 +601,11 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
       )
 
       // 错误不换掉整页：有旧数据时降级为横幅，并明确标出数据时间。
+      // 用 alert 而不是 status：这是"当前这一屏不能当真"的强提示。
       const banner = error
         ? h(
             'div',
-            { className: 'pc-banner', role: 'status', 'aria-live': 'polite' },
+            { className: 'pc-banner pc-banner-error', role: 'alert' },
             h(
               'span',
               { title: error },
@@ -618,10 +658,45 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
           h(
             'section',
             { className: 'pc-card' },
-            h('h2', { className: 'pc-card-title' }, '下一步'),
-            h('div', { className: 'pc-action-label' }, model.nextAction.label),
+            h('h2', { className: 'pc-card-title' }, degraded ? '下一步（待数据确认）' : '下一步'),
+            // 降级时不能给"你可以提交"的结论和可点主按钮 ——
+            // 那是把"我读不到"翻译成"你没问题"。
+            h('div', { className: 'pc-action-label' }, degraded ? '先确认数据' : model.nextAction.label),
             h('div', { className: 'pc-action-text' }, renderInstruction(model.nextAction.instruction)),
-            h('div', { className: 'pc-muted pc-action-text' }, model.nextAction.reason),
+            h(
+              'div',
+              { className: 'pc-muted pc-action-text' },
+              degraded ? '（结论基于不完整账本，仅供排查，不要据此提交）' : model.nextAction.reason,
+            ),
+            issueList.length > 0
+              ? h(
+                  'ol',
+                  { className: 'pc-issues' },
+                  issueList.map((issue, index) =>
+                    h(
+                      'li',
+                      { key: issue.key || `i${index}` },
+                      h('span', { className: `pc-issue-sev-${issue.severity}` }, SEVERITY_TEXT[issue.severity] || issue.severity),
+                      ' ',
+                      h('span', { className: 'pc-issue-title' }, issue.title),
+                      issue.file
+                        ? h(
+                            'span',
+                            { className: 'pc-issue-meta' },
+                            `${issue.file}${issue.line ? `:${issue.line}` : ''}`,
+                          )
+                        : null,
+                    ),
+                  ),
+                )
+              : null,
+            degraded
+              ? h(
+                  'div',
+                  { className: 'pc-blocked-hint' },
+                  `数据有 ${(model.warnings && model.warnings.length) || 0} 处异常，先处理上面的提示再行动。`,
+                )
+              : null,
             lastSent
               ? h(
                   'div',
@@ -632,7 +707,11 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
             h(
               'div',
               { className: 'pc-action-row' },
-              h('button', { className: 'pc-btn pc-btn-primary', onClick: sendToAgent }, '去对话发送'),
+              h(
+                'button',
+                { className: 'pc-btn pc-btn-primary', onClick: sendToAgent, disabled: degraded },
+                '去对话发送',
+              ),
               h(
                 'button',
                 { className: 'pc-btn', onClick: copyInstruction },
@@ -698,7 +777,7 @@ h2.pc-card-title { margin:0 0 10px; font-size:12px; font-weight:600; color:var(-
                   null,
                   model.tasks.length === 0
                     ? h('tr', null, h('td', { colSpan: 5, className: 'pc-muted' }, '还没有任务'))
-                    : model.tasks.map((task) => h(TaskRow, { key: task.id, task })),
+                    : model.tasks.map((task) => h(TaskRow, { key: task.id, task, degraded })),
                 ),
               ),
             ),

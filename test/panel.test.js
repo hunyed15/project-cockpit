@@ -5,7 +5,8 @@ import { buildPanelModel } from '../lib/panel.js'
 const ledger = (overrides = {}) => ({
   rounds: [{ round: 1, verdict: 'fix', mode: 'full', at: '2026-11-01T00:00:00Z' }],
   dispositions: [],
-  latest: { meta: { round: 1 }, issues: [{ severity: 'important', key: 'k1' }] },
+  // 真实形状：issues 在 review 下（顶层 issues 曾经被误读为空）
+  latest: { meta: { round: 1 }, review: { issues: [{ severity: 'important', key: 'k1', issue: '问题一', file: 'a.js', line: 3 }], verdict: 'fix' } },
   warnings: [],
   ...overrides,
 })
@@ -47,6 +48,15 @@ test('单任务的 bug 计数来自它自己的账本', () => {
   assert.equal(model.tasks[0].bugs.lastRound, 1)
   assert.equal(model.tasks[0].bugs.lastVerdict, 'fix')
   assert.equal(model.tasks[0].rounds, 1)
+})
+
+test('真实 review.issues 形状能算出 blocking，并带出要修的那几条', () => {
+  const model = buildPanelModel(evidence())
+  assert.equal(model.totals.blocking, 1, '真实形状下 blocking 不能恒为 0')
+  assert.equal(model.totals.issues.length, 1)
+  assert.equal(model.totals.issues[0].severity, 'important')
+  assert.ok(model.totals.issues[0].title.includes('问题一'))
+  assert.equal(model.totals.issues[0].task, 'Task t1')
 })
 
 test('多任务各算各的账本，不互相串', () => {
