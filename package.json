@@ -6,11 +6,11 @@
   "author": "hunyed15",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/hunyed15/dsh-project-cockpit.git"
+    "url": "git+https://github.com/hunyed15/project-cockpit.git"
   },
-  "homepage": "https://github.com/hunyed15/dsh-project-cockpit#readme",
+  "homepage": "https://github.com/hunyed15/project-cockpit#readme",
   "bugs": {
-    "url": "https://github.com/hunyed15/dsh-project-cockpit/issues"
+    "url": "https://github.com/hunyed15/project-cockpit/issues"
   },
   "keywords": [
     "dsh",

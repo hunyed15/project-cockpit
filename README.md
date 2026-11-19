@@ -1,6 +1,6 @@
 # @hunyed15/project-cockpit
 
-> 源码：<https://github.com/hunyed15/dsh-project-cockpit>
+> 源码：<https://github.com/hunyed15/project-cockpit>
 
 DSH 插件：在左侧栏加一个**项目驾驶舱**整页，只读回答三个问题——**到哪了 / 卡在哪 / 下一步做什么**，并把"下一步"一键交给当前会话里的 AI 去执行。
 
@@ -15,10 +15,10 @@ DSH 插件：在左侧栏加一个**项目驾驶舱**整页，只读回答三个
 只通过 GitHub 分发（没有发布到 npm）。
 
 ```powershell
-plugin_manager(action: "install_bundle", target: "git+https://github.com/hunyed15/dsh-project-cockpit.git")
+plugin_manager(action: "install_bundle", target: "git+https://github.com/hunyed15/project-cockpit.git")
 ```
 
-固定版本：`git+https://github.com/hunyed15/dsh-project-cockpit.git#v0.1.0`。
+固定版本：`git+https://github.com/hunyed15/project-cockpit.git#v0.1.0`。
 
 也可以 `git clone` 后用 **Plugins → Add plugin** 选目录，或直接 `install_bundle` 传本地路径。
 
