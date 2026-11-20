@@ -1,7 +1,8 @@
-> **⚠️ 已归档：本项目已并入 [`@hunyed15/claude-code-review`](https://github.com/hunyed15/dsh-claude-code-review) v2.0.0**
+> **⚠️ 已归档：本项目已并入 [`@hunyed15/project-cockpit`](https://github.com/hunyed15/dsh-project-cockpit)**
 >
-> 项目驾驶舱现在是审核插件的左侧栏「项目」整页。**请安装那一个插件**，不要与本包同时安装
-> （两者注册同一个面板 id `project-cockpit`，会互相顶掉）。
+> 那个包原名 `@hunyed15/claude-code-review`，v2.0.0 把本项目的驾驶舱并了进去，v3.0.0 起改名为
+> `@hunyed15/project-cockpit`（仓库 `hunyed15/dsh-project-cockpit`）。
+> **请安装那一个包**，不要与本仓库的旧包同时安装（两者注册同一个面板 id `project-cockpit`，会互相顶掉）。
 >
 > 本仓库不再更新，保留作为设计文档与决策记录。
 
@@ -76,7 +77,7 @@
 ## 现在怎么装
 
 ```powershell
-plugin_manager(action: "install_bundle", target: "git+https://github.com/hunyed15/dsh-claude-code-review.git#v2.0.0")
+plugin_manager(action: "install_bundle", target: "git+https://github.com/hunyed15/dsh-project-cockpit.git")
 ```
 
 需要 DSH `>=0.2.2-rc.3 <0.3.0`、Claude Code CLI（鉴权）、PowerShell 7。
